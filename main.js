@@ -15,26 +15,19 @@ const url = `https://api.openweathermap.org/data/2.5/weather?q=Taipei,TW&appid=$
 fetch(url)
   .then(res => res.json())
   .then(data => {
-    if (data.cod && data.cod !== 200) {
-      weatherElem.textContent = '無法取得（' + data.message + '）';
-      humidityElem.textContent = '無法取得';
-      console.error('OpenWeatherMap API 錯誤:', data);
-      return;
-    }
     weatherElem.textContent = data.weather[0].description;
     humidityElem.textContent = data.main.humidity + '%';
   })
-  .catch((err) => {
-    weatherElem.textContent = '無法取得（網路錯誤）';
+  .catch(() => {
+    weatherElem.textContent = '無法取得';
     humidityElem.textContent = '無法取得';
-    console.error('fetch 發生錯誤:', err);
   });
 
 // 月相計算（簡易版）
 function getMoonPhase(date) {
   // 參考演算法: https://www.subsystems.us/uploads/9/8/9/4/98948044/moonphase.pdf
-  let year = date.getFullYear();
-  let month = date.getMonth() + 1;
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
   const day = date.getDate();
   let c = 0, e = 0;
   let jd = 0;
@@ -49,10 +42,9 @@ function getMoonPhase(date) {
   jd /= 29.5305882; // divide by the moon cycle
   const b = parseInt(jd); // int(jd) -> b, take integer part of jd
   jd -= b; // subtract integer part to leave fractional part of original jd
-  let phase = Math.round(jd * 8) % 8;
-  if (phase < 0) phase += 8;
-  const phases = ['新月', '蛾眉月', '上弦月', '盈凸月', '滿月', '虧凸月', '下弦月', '殘月'];
-  return phases[phase] || '無法計算';
+  const phase = Math.round(jd * 8);
+  const phases = ['新月', '蛾眉月', '上弦月', '盈凸月', '滿月', '虧凸月', '下弦月', '殘月', '新月'];
+  return phases[phase];
 }
 
 document.getElementById('moon').textContent = getMoonPhase(today);
