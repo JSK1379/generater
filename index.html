@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>台北地理資訊看板</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #222; margin: 0; padding: 0; }
+        .container { max-width: 400px; margin: 40px auto; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px #0001; padding: 32px; }
+        h1 { text-align: center; }
+        .info { margin: 16px 0; font-size: 1.2em; }
+        .label { color: #888; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>台北地理資訊</h1>
+        <div class="info"><span class="label">日期：</span><span id="date"></span></div>
+        <div class="info"><span class="label">天氣：</span><span id="weather"></span></div>
+        <div class="info"><span class="label">濕度：</span><span id="humidity"></span></div>
+        <div class="info"><span class="label">月相：</span><span id="moon"></span></div>
+    </div>
+    <script src="main.js"></script>
+</body>
+</html>
