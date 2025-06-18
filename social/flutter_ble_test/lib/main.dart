@@ -16,6 +16,8 @@ class _BleScanBodyState extends State<BleScanBody> {
   List<ScanResult> _scanResults = [];
   bool _isScanning = false;
   BluetoothAdapterState? _btState;
+  BluetoothDevice? _connectedDevice;
+  List<BluetoothService> _services = [];
 
   @override
   void initState() {
@@ -44,32 +46,100 @@ class _BleScanBodyState extends State<BleScanBody> {
     setState(() => _isScanning = false);
   }
 
+  Future<void> _connect(BluetoothDevice device) async {
+    await device.connect();
+    setState(() => _connectedDevice = device);
+    _services = await device.discoverServices();
+    setState(() {});
+  }
+
+  Future<void> _disconnect() async {
+    await _connectedDevice?.disconnect();
+    setState(() {
+      _connectedDevice = null;
+      _services = [];
+    });
+  }
+
+  Future<void> _readCharacteristic(BluetoothCharacteristic c) async {
+    var value = await c.read();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('讀取值: $value')),
+    );
+  }
+
+  Future<void> _writeCharacteristic(BluetoothCharacteristic c) async {
+    // 寫入固定值範例，可根據需求修改
+    await c.write([0x01]);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已寫入 0x01')),
+    );
+  }
+
   @override
   Widget build(BuildContext c) => Scaffold(
     appBar: AppBar(title: const Text('BLE 掃描 + 裝置列表')),
     body: Column(children: [
-      Text('藍牙: ${_btState?.name.toUpperCase() ?? 'UNKNOWN'}'),
+      if (_connectedDevice != null)
+        Text('已連接：${_connectedDevice!.name.isNotEmpty ? _connectedDevice!.name : _connectedDevice!.id.id}')
+      else
+        Text('藍牙狀態：${_btState?.name.toUpperCase() ?? 'UNKNOWN'}'),
       ElevatedButton(
         onPressed: _isScanning ? null : _startScan,
         child: Text(_isScanning ? '掃描中…' : '開始掃描'),
       ),
-      Expanded(
-        child: _scanResults.isEmpty
-          ? const Center(child: Text('尚未掃描到任何裝置。'))
-          : ListView.builder(
-              itemCount: _scanResults.length,
-              itemBuilder: (_, i) {
-                final r = _scanResults[i];
-                final name = r.device.name.isNotEmpty
-                  ? r.device.name : r.device.id.id;
-                return ListTile(
-                  leading: const Icon(Icons.bluetooth),
-                  title: Text(name),
-                  subtitle: Text('RSSI: ${r.rssi} dBm'),
-                );
-              },
+      if (_connectedDevice != null)
+        Column(
+          children: [
+            ElevatedButton(
+              onPressed: _disconnect,
+              child: const Text('斷開連接'),
             ),
-      ),
+            const Divider(),
+            Text('服務與特徵值：'),
+            ..._services.expand((s) => s.characteristics.map((c) => ListTile(
+              title: Text('UUID: ${c.uuid}'),
+              subtitle: Text('屬性: ${c.properties}'),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (c.properties.read)
+                    IconButton(
+                      icon: const Icon(Icons.download),
+                      onPressed: () => _readCharacteristic(c),
+                    ),
+                  if (c.properties.write)
+                    IconButton(
+                      icon: const Icon(Icons.upload),
+                      onPressed: () => _writeCharacteristic(c),
+                    ),
+                ],
+              ),
+            ))),
+          ],
+        )
+      else
+        Expanded(
+          child: _scanResults.isEmpty
+            ? const Center(child: Text('尚未掃描到任何裝置。'))
+            : ListView.builder(
+                itemCount: _scanResults.length,
+                itemBuilder: (_, i) {
+                  final r = _scanResults[i];
+                  final name = r.advertisementData.localName.isNotEmpty
+                    ? r.advertisementData.localName : r.device.id.id;
+                  return ListTile(
+                    leading: const Icon(Icons.bluetooth),
+                    title: Text(name),
+                    subtitle: Text('RSSI: ${r.rssi} dBm'),
+                    trailing: ElevatedButton(
+                      onPressed: () => _connect(r.device),
+                      child: const Text('連接'),
+                    ),
+                  );
+                },
+              ),
+        ),
     ]),
   );
 }
