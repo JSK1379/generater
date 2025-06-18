@@ -1,9 +1,51 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'avatar_page.dart';
 
 void main() {
-  runApp(const MaterialApp(home: BleScanBody()));
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: const MainTabPage(),
+    );
+  }
+}
+
+class MainTabPage extends StatefulWidget {
+  const MainTabPage({super.key});
+  @override
+  State<MainTabPage> createState() => _MainTabPageState();
+}
+
+class _MainTabPageState extends State<MainTabPage> {
+  int _currentIndex = 0;
+  final List<Widget> _pages = const [
+    BleScanBody(),
+    AvatarPage(),
+  ];
+  final List<BottomNavigationBarItem> _items = const [
+    BottomNavigationBarItem(icon: Icon(Icons.bluetooth), label: '藍牙'),
+    BottomNavigationBarItem(icon: Icon(Icons.face), label: 'Avatar'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _pages[_currentIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        items: _items,
+        onTap: (i) => setState(() => _currentIndex = i),
+      ),
+    );
+  }
 }
 
 class BleScanBody extends StatefulWidget {
