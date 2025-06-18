@@ -24,7 +24,12 @@ class _BleScanBodyState extends State<BleScanBody> {
     super.initState();
     _requestPermissions().then((_) {
       FlutterBluePlus.adapterState.listen((s) {
-        setState(() => _btState = s);
+        setState(() {
+          _btState = s;
+          if (s != BluetoothAdapterState.on) {
+            _scanResults = [];
+          }
+        });
       });
       FlutterBluePlus.onScanResults.listen((r) {
         setState(() => _scanResults = r);
@@ -84,10 +89,18 @@ class _BleScanBodyState extends State<BleScanBody> {
         Text('已連接：${_connectedDevice!.name.isNotEmpty ? _connectedDevice!.name : _connectedDevice!.id.id}')
       else
         Text('藍牙狀態：${_btState?.name.toUpperCase() ?? 'UNKNOWN'}'),
-      ElevatedButton(
-        onPressed: _isScanning ? null : _startScan,
-        child: Text(_isScanning ? '掃描中…' : '開始掃描'),
-      ),
+      if (_btState != BluetoothAdapterState.on)
+        ElevatedButton(
+          onPressed: () async {
+            await FlutterBluePlus.turnOn();
+          },
+          child: const Text('開啟藍牙'),
+        )
+      else
+        ElevatedButton(
+          onPressed: _isScanning ? null : _startScan,
+          child: Text(_isScanning ? '掃描中…' : '開始掃描'),
+        ),
       if (_connectedDevice != null)
         Column(
           children: [
