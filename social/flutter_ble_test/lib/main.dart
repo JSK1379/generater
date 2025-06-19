@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'avatar_page.dart';
+import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
 
 void main() {
   runApp(const MyApp());
@@ -209,15 +210,77 @@ class _BleScanBodyState extends State<BleScanBody> {
   );
 }
 
-// 新增設置分頁頁面
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  final TextEditingController _nicknameController = TextEditingController();
+  bool _isAdvertising = false;
+  final FlutterBlePeripheral _blePeripheral = FlutterBlePeripheral();
+
+  @override
+  void dispose() {
+    _blePeripheral.stop();
+    _nicknameController.dispose();
+    super.dispose();
+  }
+
+  void _toggleAdvertise(bool value) async {
+    if (value) {
+      await _blePeripheral.start(
+        advertiseData: AdvertiseData(
+          includeDeviceName: true,
+          localName: _nicknameController.text.isNotEmpty ? _nicknameController.text : null,
+        ),
+      );
+    } else {
+      await _blePeripheral.stop();
+    }
+    setState(() => _isAdvertising = value);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('設置')),
-      body: const Center(child: Text('這裡是設置分頁')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('暱稱', style: TextStyle(fontSize: 16)),
+            TextField(
+              controller: _nicknameController,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: '請輸入暱稱',
+              ),
+              onChanged: (v) {
+                if (_isAdvertising) {
+                  _toggleAdvertise(false);
+                  Future.delayed(const Duration(milliseconds: 300), () {
+                    _toggleAdvertise(true);
+                  });
+                }
+              },
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('開啟被偵測 (BLE 廣播)', style: TextStyle(fontSize: 16)),
+                Switch(
+                  value: _isAdvertising,
+                  onChanged: (v) => _toggleAdvertise(v),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
