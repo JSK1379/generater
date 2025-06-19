@@ -186,7 +186,10 @@ class _BleScanBodyState extends State<BleScanBody> {
                   return ListTile(
                     leading: const Icon(Icons.bluetooth),
                     title: Text(name),
-                    subtitle: Text('RSSI: ${r.rssi} dBm'),
+                    subtitle: Text(
+                      'RSSI: ${r.rssi} dBm\n'
+                      'ID: ${r.device.id.id}\n'
+                    ),
                     trailing: ElevatedButton(
                       onPressed: () => _connect(r.device),
                       child: const Text('連接'),
