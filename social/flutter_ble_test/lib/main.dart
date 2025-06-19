@@ -233,7 +233,15 @@ class _SettingsPageState extends State<SettingsPage> {
       await _blePeripheral.start(
         advertiseData: AdvertiseData(
           includeDeviceName: true,
-          localName: _nicknameController.text.isNotEmpty ? _nicknameController.text : null,
+          localName: _nicknameController.text.isNotEmpty
+              ? _nicknameController.text
+              : null, // BLE Complete Local Name
+        ),
+        advertiseResponseData: AdvertiseData(
+          includeDeviceName: true,
+          localName: _nicknameController.text.isNotEmpty
+              ? _nicknameController.text
+              : null, // BLE Scan Response Data
         ),
       );
     } else {
