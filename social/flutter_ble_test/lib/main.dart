@@ -181,17 +181,19 @@ class _BleScanBodyState extends State<BleScanBody> {
           child: _scanResults.isEmpty
             ? const Center(child: Text('尚未掃描到任何裝置。'))
             : ListView.builder(
-                itemCount: _scanResults.length,
+                itemCount: _scanResults.where((r) => r.advertisementData.localName.isNotEmpty).length,
                 itemBuilder: (_, i) {
-                  final r = _scanResults[i];
-                  final name = r.advertisementData.localName.isNotEmpty
-                    ? r.advertisementData.localName : r.device.id.id;
+                  final filteredResults = _scanResults.where((r) => r.advertisementData.localName.isNotEmpty).toList();
+                  final r = filteredResults[i];
+                  final name = r.advertisementData.localName;
                   return ListTile(
                     leading: const Icon(Icons.bluetooth),
                     title: Text(name),
                     subtitle: Text(
                       'RSSI: ${r.rssi} dBm\n'
                       'ID: ${r.device.id.id}\n'
+                      'Manufacturer: '
+                      '${r.advertisementData.manufacturerData.isNotEmpty ? r.advertisementData.manufacturerData : "無"}'
                     ),
                     trailing: ElevatedButton(
                       onPressed: () => _connect(r.device),
