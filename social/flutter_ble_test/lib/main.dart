@@ -74,6 +74,9 @@ class _BleScanBodyState extends State<BleScanBody> {
         });
       });
       FlutterBluePlus.onScanResults.listen((r) {
+        for (final result in r) {
+          debugPrint('ScanResult: id=${result.device.id.id}, name="${result.advertisementData.localName}", rssi=${result.rssi}, manufacturerData=${result.advertisementData.manufacturerData}');
+        }
         setState(() => _scanResults = r);
       });
     });
