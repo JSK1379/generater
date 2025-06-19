@@ -151,7 +151,7 @@ class _BleScanBodyState extends State<BleScanBody> {
           children: [
             ElevatedButton(
               onPressed: _disconnect,
-              child: const Text('斷開連接'),
+              child: const Text('重新配對'),
             ),
             const Divider(),
             Text('服務與特徵值：'),
