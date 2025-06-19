@@ -47,10 +47,14 @@ class _AvatarPageState extends State<AvatarPage> {
     final prompt = _descController.text.trim();
     final body = jsonEncode({
       "contents": [
-        {"role": "user", "parts": [{"text": prompt}]}
+        {
+          "parts": [
+            {"text": prompt}
+          ]
+        }
       ],
       "generationConfig": {
-        "response_mime_type": "image/png"
+        "responseModalities": ["TEXT", "IMAGE"]
       }
     });
     try {
@@ -59,6 +63,8 @@ class _AvatarPageState extends State<AvatarPage> {
         headers: {"Content-Type": "application/json"},
         body: body,
       );
+      debugPrint('Gemini API request body: ' + body);
+      debugPrint('Gemini API response: ' + response.body);
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final parts = data["candidates"][0]["content"]["parts"];
@@ -76,7 +82,7 @@ class _AvatarPageState extends State<AvatarPage> {
       } else {
         setState(() => _loading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('API 錯誤: ${response.statusCode}')),
+          SnackBar(content: Text('API 錯誤: ${response.statusCode}\n${response.body}')),
         );
       }
     } catch (e) {
