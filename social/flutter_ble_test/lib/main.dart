@@ -29,10 +29,12 @@ class _MainTabPageState extends State<MainTabPage> {
   final List<Widget> _pages = const [
     BleScanBody(),
     AvatarPage(),
+    SettingsPage(),
   ];
   final List<BottomNavigationBarItem> _items = const [
     BottomNavigationBarItem(icon: Icon(Icons.bluetooth), label: '藍牙'),
     BottomNavigationBarItem(icon: Icon(Icons.face), label: 'Avatar'),
+    BottomNavigationBarItem(icon: Icon(Icons.settings), label: '設置'),
   ];
 
   @override
@@ -205,4 +207,17 @@ class _BleScanBodyState extends State<BleScanBody> {
         ),
     ]),
   );
+}
+
+// 新增設置分頁頁面
+class SettingsPage extends StatelessWidget {
+  const SettingsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('設置')),
+      body: const Center(child: Text('這裡是設置分頁')),
+    );
+  }
 }
