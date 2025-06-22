@@ -48,10 +48,10 @@ class _AvatarPageState extends State<AvatarPage> {
     final apiKey = _apiKey;
     final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=$apiKey');
     // 將「人」加入描述詞但不顯示在輸入框
-    final prompt = _descController.text.trim() + ' 生成一個包含人的圖像，' +
-        (_selectedGender.isNotEmpty ? '性別：$_selectedGender，' : '') +
-        (_selectedHair.isNotEmpty ? '髮型：$_selectedHair，' : '') +
-        (_selectedStyle.isNotEmpty ? '畫風：$_selectedStyle，' : '');
+    final prompt = '${_descController.text.trim()} 生成一個包含人的圖像，'
+        '${_selectedGender.isNotEmpty ? '性別：$_selectedGender，' : ''}'
+        '${_selectedHair.isNotEmpty ? '髮型：$_selectedHair，' : ''}'
+        '${_selectedStyle.isNotEmpty ? '畫風：$_selectedStyle，' : ''}';
     final body = jsonEncode({
       "contents": [
         {
@@ -70,8 +70,9 @@ class _AvatarPageState extends State<AvatarPage> {
         headers: {"Content-Type": "application/json"},
         body: body,
       );
-      debugPrint('Gemini API request body: ' + body);
-      debugPrint('Gemini API response: ' + response.body);
+      if (!mounted) return;
+      debugPrint('Gemini API request body: $body');
+      debugPrint('Gemini API response: ${response.body}');
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final parts = data["candidates"][0]["content"]["parts"];
@@ -82,17 +83,20 @@ class _AvatarPageState extends State<AvatarPage> {
             break;
           }
         }
+        if (!mounted) return;
         setState(() {
           _base64Image = base64Image;
           _loading = false;
         });
       } else {
+        if (!mounted) return;
         setState(() => _loading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('API 錯誤: ${response.statusCode}\n${response.body}')),
         );
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('發生錯誤: $e')),
@@ -118,6 +122,7 @@ class _AvatarPageState extends State<AvatarPage> {
       setState(() {
         _apiKeyLoaded = true;
       });
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('無法讀取 API 金鑰，請檢查 assets/secret.json')),
       );

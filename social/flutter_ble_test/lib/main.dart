@@ -13,8 +13,8 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      home: const MainTabPage(),
+    return const MaterialApp(
+      home: MainTabPage(),
     );
   }
 }
@@ -78,7 +78,7 @@ class _BleScanBodyState extends State<BleScanBody> {
       });
       FlutterBluePlus.onScanResults.listen((r) {
         for (final result in r) {
-          debugPrint('ScanResult: id=${result.device.id.id}, name="${result.advertisementData.localName}", rssi=${result.rssi}, manufacturerData=${result.advertisementData.manufacturerData}');
+          debugPrint('ScanResult: id=[1m${result.device.remoteId.str}[22m, name="${result.advertisementData.advName}", rssi=${result.rssi}, manufacturerData=${result.advertisementData.manufacturerData}');
         }
         setState(() => _scanResults = r);
       });
@@ -116,6 +116,7 @@ class _BleScanBodyState extends State<BleScanBody> {
 
   Future<void> _readCharacteristic(BluetoothCharacteristic c) async {
     var value = await c.read();
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('讀取值: $value')),
     );
@@ -124,6 +125,7 @@ class _BleScanBodyState extends State<BleScanBody> {
   Future<void> _writeCharacteristic(BluetoothCharacteristic c) async {
     // 寫入固定值範例，可根據需求修改
     await c.write([0x01]);
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('已寫入 0x01')),
     );
@@ -134,7 +136,7 @@ class _BleScanBodyState extends State<BleScanBody> {
     appBar: AppBar(title: const Text('BLE 掃描 + 裝置列表')),
     body: Column(children: [
       if (_connectedDevice != null)
-        Text('已連接：${_connectedDevice!.name.isNotEmpty ? _connectedDevice!.name : _connectedDevice!.id.id}')
+        Text('已連接：${_connectedDevice!.platformName.isNotEmpty ? _connectedDevice!.platformName : _connectedDevice!.remoteId.str}')
       else
         Text('藍牙狀態：${_btState?.name.toUpperCase() ?? 'UNKNOWN'}'),
       if (_btState != BluetoothAdapterState.on)
@@ -157,7 +159,7 @@ class _BleScanBodyState extends State<BleScanBody> {
               child: const Text('重新配對'),
             ),
             const Divider(),
-            Text('服務與特徵值：'),
+            const Text('服務與特徵值：'),
             ..._services.expand((s) => s.characteristics.map((c) => ListTile(
               title: Text('UUID: ${c.uuid}'),
               subtitle: Text('屬性: ${c.properties}'),
@@ -184,17 +186,17 @@ class _BleScanBodyState extends State<BleScanBody> {
           child: _scanResults.isEmpty
             ? const Center(child: Text('尚未掃描到任何裝置。'))
             : ListView.builder(
-                itemCount: _scanResults.where((r) => r.advertisementData.localName.isNotEmpty).length,
+                itemCount: _scanResults.where((r) => r.advertisementData.advName.isNotEmpty).length,
                 itemBuilder: (_, i) {
-                  final filteredResults = _scanResults.where((r) => r.advertisementData.localName.isNotEmpty).toList();
+                  final filteredResults = _scanResults.where((r) => r.advertisementData.advName.isNotEmpty).toList();
                   final r = filteredResults[i];
-                  final name = r.advertisementData.localName;
+                  final name = r.advertisementData.advName;
                   return ListTile(
                     leading: const Icon(Icons.bluetooth),
                     title: Text(name),
                     subtitle: Text(
                       'RSSI: ${r.rssi} dBm\n'
-                      'ID: ${r.device.id.id}\n'
+                      'ID: ${r.device.remoteId.str}\n'
                       'Manufacturer: '
                       '${r.advertisementData.manufacturerData.isNotEmpty ? r.advertisementData.manufacturerData : "無"}'
                     ),
