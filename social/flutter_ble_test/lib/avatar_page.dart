@@ -23,7 +23,7 @@ class _AvatarPageState extends State<AvatarPage> {
   String _selectedGender = '';
   String _selectedHair = '';
   String _selectedStyle = '';
-  String _selectedBody = '半身';
+  String _selectedBody = '';
 
   // 新增：套用頭像
   void _applyAvatar() {
@@ -257,13 +257,13 @@ class _AvatarPageState extends State<AvatarPage> {
                       ChoiceChip(
                         label: const Text('頭像'),
                         selected: _selectedBody == '半身',
-                        onSelected: (selected) => _setBody(selected ? '半身' : _selectedBody),
+                        onSelected: (selected) => _setBody(selected ? '半身' : ''),
                       ),
                       const SizedBox(width: 8),
                       ChoiceChip(
                         label: const Text('全身'),
                         selected: _selectedBody == '全身',
-                        onSelected: (selected) => _setBody(selected ? '全身' : _selectedBody),
+                        onSelected: (selected) => _setBody(selected ? '全身' : ''),
                       ),
                     ],
                   ),
