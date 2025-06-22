@@ -86,16 +86,32 @@ class _BleScanBodyState extends State<BleScanBody> {
   }
 
   Future<void> _requestPermissions() async {
-    await [
+    final statuses = await [
       Permission.bluetoothScan,
       Permission.bluetoothConnect,
       Permission.locationWhenInUse,
     ].request();
+
+    // 檢查權限是否都已授權
+    if (statuses[Permission.bluetoothScan] != PermissionStatus.granted ||
+        statuses[Permission.bluetoothConnect] != PermissionStatus.granted ||
+        statuses[Permission.locationWhenInUse] != PermissionStatus.granted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('請授權所有藍牙權限才能使用藍牙功能')),
+        );
+      }
+      return;
+    }
   }
 
   Future<void> _startScan() async {
     setState(() => _isScanning = true);
-    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
+    await FlutterBluePlus.startScan(); // 不設 timeout，持續掃描
+  }
+
+  Future<void> _stopScan() async {
+    await FlutterBluePlus.stopScan();
     setState(() => _isScanning = false);
   }
 
@@ -148,8 +164,8 @@ class _BleScanBodyState extends State<BleScanBody> {
         )
       else
         ElevatedButton(
-          onPressed: _isScanning ? null : _startScan,
-          child: Text(_isScanning ? '掃描中…' : '開始掃描'),
+          onPressed: _isScanning ? _stopScan : _startScan,
+          child: Text(_isScanning ? '停止掃描' : '開始掃描'),
         ),
       if (_connectedDevice != null)
         Column(
@@ -183,8 +199,8 @@ class _BleScanBodyState extends State<BleScanBody> {
         )
       else
         Expanded(
-          child: _scanResults.isEmpty
-            ? const Center(child: Text('尚未掃描到任何裝置。'))
+          child: _scanResults.where((r) => r.advertisementData.advName.isNotEmpty).isEmpty
+            ? const Center(child: Text('沒有人在這個地方QQ'))
             : ListView.builder(
                 itemCount: _scanResults.where((r) => r.advertisementData.advName.isNotEmpty).length,
                 itemBuilder: (_, i) {
@@ -222,6 +238,13 @@ class _SettingsPageState extends State<SettingsPage> {
   final TextEditingController _nicknameController = TextEditingController();
   bool _isAdvertising = false;
   final FlutterBlePeripheral _blePeripheral = FlutterBlePeripheral();
+
+  // 只顯示頭像，不提供產生/套用功能
+  ImageProvider? get _avatarImage {
+    // 這裡假設 AvatarPage 有 static 變數或方法可取得目前頭像
+    // 若無，請用 Provider/InheritedWidget/全域變數等方式傳遞
+    return AvatarPage.currentAvatarImage ?? const AssetImage('assets/avatar_placeholder.png');
+  }
 
   @override
   void dispose() {
@@ -261,6 +284,13 @@ class _SettingsPageState extends State<SettingsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Center(
+              child: CircleAvatar(
+                radius: 80, 
+                backgroundImage: _avatarImage,
+              ),
+            ),
+            const SizedBox(height: 24),
             const Text('暱稱', style: TextStyle(fontSize: 16)),
             TextField(
               controller: _nicknameController,

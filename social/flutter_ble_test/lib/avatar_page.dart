@@ -6,6 +6,9 @@ import 'package:flutter/services.dart';
 class AvatarPage extends StatefulWidget {
   const AvatarPage({super.key});
 
+  // 新增：全域靜態頭像變數
+  static ImageProvider? currentAvatarImage;
+
   @override
   State<AvatarPage> createState() => _AvatarPageState();
 }
@@ -20,6 +23,17 @@ class _AvatarPageState extends State<AvatarPage> {
   String _selectedGender = '';
   String _selectedHair = '';
   String _selectedStyle = '';
+
+  // 新增：套用頭像
+  void _applyAvatar() {
+    if (_base64Image != null) {
+      AvatarPage.currentAvatarImage = MemoryImage(base64Decode(_base64Image!));
+    } else if (_imageUrl != null) {
+      AvatarPage.currentAvatarImage = NetworkImage(_imageUrl!);
+    }
+    setState(() {});
+    // 通知外部頁面刷新（可用 Provider/InheritWidget 改進）
+  }
 
   Future<void> _generateAvatar() async {
     if (_descController.text.trim().isEmpty) {
@@ -48,7 +62,7 @@ class _AvatarPageState extends State<AvatarPage> {
     final apiKey = _apiKey;
     final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=$apiKey');
     // 將「人」加入描述詞但不顯示在輸入框
-    final prompt = '${_descController.text.trim()} 生成一個包含人的圖像，'
+    final prompt = '${_descController.text.trim()} 生成一個包含人的全身像，'
         '${_selectedGender.isNotEmpty ? '性別：$_selectedGender，' : ''}'
         '${_selectedHair.isNotEmpty ? '髮型：$_selectedHair，' : ''}'
         '${_selectedStyle.isNotEmpty ? '畫風：$_selectedStyle，' : ''}';
@@ -227,32 +241,78 @@ class _AvatarPageState extends State<AvatarPage> {
               ),
             ),
             const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _loading
-                  ? null
-                  : () {
-                      FocusScope.of(context).unfocus(); // 按下時關閉鍵盤
-                      _generateAvatar();
-                    },
-              child: _loading
-                  ? const CircularProgressIndicator()
-                  : const Text('生成頭像'),
-            ),
+            // 只在未生成圖片時顯示生成按鈕
+            if (_base64Image == null && _imageUrl == null)
+              ElevatedButton(
+                onPressed: _loading
+                    ? null
+                    : () {
+                        FocusScope.of(context).unfocus(); // 按下時關閉鍵盤
+                        _generateAvatar();
+                      },
+                child: _loading
+                    ? const CircularProgressIndicator()
+                    : const Text('生成頭像'),
+              ),
             const SizedBox(height: 24),
             if (_base64Image != null)
               Column(
                 children: [
                   const Text('Gemini 生成圖片結果：'),
                   const SizedBox(height: 8),
-                  ClipOval(
-                    child: SizedBox(
-                      width: 180,
-                      height: 180,
-                      child: Image.memory(
-                        base64Decode(_base64Image!),
-                        fit: BoxFit.cover,
+                  GestureDetector(
+                    onTap: () {
+                      if (_base64Image != null) {
+                        showDialog(
+                          context: context,
+                          builder: (context) => Dialog(
+                            backgroundColor: Colors.transparent,
+                            child: InteractiveViewer(
+                              child: ClipOval(
+                                child: Image.memory(
+                                  base64Decode(_base64Image!),
+                                  width: 360,
+                                  height: 360,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    child: ClipOval(
+                      child: SizedBox(
+                        width: 180,
+                        height: 180,
+                        child: Image.memory(
+                          base64Decode(_base64Image!),
+                          fit: BoxFit.cover,
+                        ),
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton(
+                        onPressed: _applyAvatar,
+                        child: const Text('套用頭像'),
+                      ),
+                      const SizedBox(width: 16),
+                      ElevatedButton(
+                        onPressed: _loading
+                            ? null
+                            : () {
+                                FocusScope.of(context).unfocus();
+                                _generateAvatar();
+                              },
+                        child: _loading
+                            ? const CircularProgressIndicator()
+                            : const Text('重新生成'),
+                      ),
+                    ],
                   ),
                 ],
               )
@@ -261,15 +321,59 @@ class _AvatarPageState extends State<AvatarPage> {
                 children: [
                   const Text('DiceBear 生成結果：'),
                   const SizedBox(height: 8),
-                  ClipOval(
-                    child: SizedBox(
-                      width: 180,
-                      height: 180,
-                      child: Image.network(
-                        _imageUrl!,
-                        fit: BoxFit.cover,
+                  GestureDetector(
+                    onTap: () {
+                      if (_imageUrl != null) {
+                        showDialog(
+                          context: context,
+                          builder: (context) => Dialog(
+                            backgroundColor: Colors.transparent,
+                            child: InteractiveViewer(
+                              child: ClipOval(
+                                child: Image.network(
+                                  _imageUrl!,
+                                  width: 360,
+                                  height: 360,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    child: ClipOval(
+                      child: SizedBox(
+                        width: 180,
+                        height: 180,
+                        child: Image.network(
+                          _imageUrl!,
+                          fit: BoxFit.cover,
+                        ),
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton(
+                        onPressed: _applyAvatar,
+                        child: const Text('套用頭像'),
+                      ),
+                      const SizedBox(width: 16),
+                      ElevatedButton(
+                        onPressed: _loading
+                            ? null
+                            : () {
+                                FocusScope.of(context).unfocus();
+                                _generateAvatar();
+                              },
+                        child: _loading
+                            ? const CircularProgressIndicator()
+                            : const Text('重新生成'),
+                      ),
+                    ],
                   ),
                 ],
               ),
