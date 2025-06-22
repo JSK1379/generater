@@ -103,6 +103,12 @@ class _BleScanBodyState extends State<BleScanBody> {
       }
       return;
     }
+
+    // 權限允許後自動重啟 app
+    Future.delayed(const Duration(milliseconds: 300), () {
+      // 重新啟動 app
+      runApp(const MyApp());
+    });
   }
 
   Future<void> _startScan() async {
@@ -154,17 +160,26 @@ class _BleScanBodyState extends State<BleScanBody> {
       if (_connectedDevice != null)
         Text('已連接：${_connectedDevice!.platformName.isNotEmpty ? _connectedDevice!.platformName : _connectedDevice!.remoteId.str}')
       else
-        Text('藍牙狀態：${_btState?.name.toUpperCase() ?? 'UNKNOWN'}'),
-      if (_btState != BluetoothAdapterState.on)
         ElevatedButton(
           onPressed: () async {
-            await FlutterBluePlus.turnOn();
+            if (_isScanning) {
+              await _stopScan();
+            } else {
+              // 檢查藍牙狀態
+              if (_btState != BluetoothAdapterState.on) {
+                await _requestPermissions();
+                if (_btState != BluetoothAdapterState.on) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('請先開啟藍牙才能掃描')),
+                    );
+                  }
+                  return;
+                }
+              }
+              await _startScan();
+            }
           },
-          child: const Text('開啟藍牙'),
-        )
-      else
-        ElevatedButton(
-          onPressed: _isScanning ? _stopScan : _startScan,
           child: Text(_isScanning ? '停止掃描' : '開始掃描'),
         ),
       if (_connectedDevice != null)
@@ -279,48 +294,75 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('設置')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: CircleAvatar(
-                radius: 80, 
-                backgroundImage: _avatarImage,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+            child: SingleChildScrollView(
+              reverse: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: GestureDetector(
+                      onTap: () {
+                        if (_avatarImage != null) {
+                          showDialog(
+                            context: context,
+                            builder: (context) => Dialog(
+                              backgroundColor: Colors.transparent,
+                              child: InteractiveViewer(
+                                child: CircleAvatar(
+                                  radius: 180,
+                                  backgroundImage: _avatarImage,
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      child: CircleAvatar(
+                        radius: 80,
+                        backgroundImage: _avatarImage,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text('暱稱', style: TextStyle(fontSize: 16)),
+                  TextField(
+                    controller: _nicknameController,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: '請輸入暱稱',
+                    ),
+                    onChanged: (v) {
+                      if (_isAdvertising) {
+                        _toggleAdvertise(false);
+                        Future.delayed(const Duration(milliseconds: 300), () {
+                          _toggleAdvertise(true);
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('開啟被偵測 (BLE 廣播)', style: TextStyle(fontSize: 16)),
+                      Switch(
+                        value: _isAdvertising,
+                        onChanged: (v) => _toggleAdvertise(v),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 24),
-            const Text('暱稱', style: TextStyle(fontSize: 16)),
-            TextField(
-              controller: _nicknameController,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: '請輸入暱稱',
-              ),
-              onChanged: (v) {
-                if (_isAdvertising) {
-                  _toggleAdvertise(false);
-                  Future.delayed(const Duration(milliseconds: 300), () {
-                    _toggleAdvertise(true);
-                  });
-                }
-              },
-            ),
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('開啟被偵測 (BLE 廣播)', style: TextStyle(fontSize: 16)),
-                Switch(
-                  value: _isAdvertising,
-                  onChanged: (v) => _toggleAdvertise(v),
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
+      resizeToAvoidBottomInset: true,
     );
   }
 }

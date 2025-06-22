@@ -23,6 +23,7 @@ class _AvatarPageState extends State<AvatarPage> {
   String _selectedGender = '';
   String _selectedHair = '';
   String _selectedStyle = '';
+  String _selectedBody = '半身';
 
   // 新增：套用頭像
   void _applyAvatar() {
@@ -62,10 +63,15 @@ class _AvatarPageState extends State<AvatarPage> {
     final apiKey = _apiKey;
     final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=$apiKey');
     // 將「人」加入描述詞但不顯示在輸入框
-    final prompt = '${_descController.text.trim()} 生成一個包含人的全身像，'
-        '${_selectedGender.isNotEmpty ? '性別：$_selectedGender，' : ''}'
-        '${_selectedHair.isNotEmpty ? '髮型：$_selectedHair，' : ''}'
-        '${_selectedStyle.isNotEmpty ? '畫風：$_selectedStyle，' : ''}';
+    final prompt = _selectedBody == '全身'
+        ? '${_descController.text.trim()} 生成一個包含人的全身像，從頭髮到膝蓋，'
+            '${_selectedGender.isNotEmpty ? '性別：$_selectedGender，' : ''}'
+            '${_selectedHair.isNotEmpty ? '髮型：$_selectedHair，' : ''}'
+            '${_selectedStyle.isNotEmpty ? '畫風：$_selectedStyle，' : ''}'
+        : '${_descController.text.trim()} 生成一個包含人的頭像，'
+            '${_selectedGender.isNotEmpty ? '性別：$_selectedGender，' : ''}'
+            '${_selectedHair.isNotEmpty ? '髮型：$_selectedHair，' : ''}'
+            '${_selectedStyle.isNotEmpty ? '畫風：$_selectedStyle，' : ''}';
     final body = jsonEncode({
       "contents": [
         {
@@ -163,223 +169,256 @@ class _AvatarPageState extends State<AvatarPage> {
     });
   }
 
+  void _setBody(String body) {
+    setState(() {
+      _selectedBody = body;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Avatar')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            // 輔助輸入按鈕區塊
-            Row(
-              children: [
-                const Text('性別：'),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text('男'),
-                  selected: _selectedGender == '男',
-                  onSelected: (selected) => _setGender(selected ? '男' : ''),
-                ),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text('女'),
-                  selected: _selectedGender == '女',
-                  onSelected: (selected) => _setGender(selected ? '女' : ''),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Text('髮型：'),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text('長髮'),
-                  selected: _selectedHair == '長髮',
-                  onSelected: (selected) => _setHair(selected ? '長髮' : ''),
-                ),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text('短髮'),
-                  selected: _selectedHair == '短髮',
-                  onSelected: (selected) => _setHair(selected ? '短髮' : ''),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            // 畫風選擇按鈕區塊
-            Row(
-              children: [
-                const Text('畫風：'),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text('日系'),
-                  selected: _selectedStyle == '日系',
-                  onSelected: (selected) => _setStyle(selected ? '日系' : ''),
-                ),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text('美式'),
-                  selected: _selectedStyle == '美式',
-                  onSelected: (selected) => _setStyle(selected ? '美式' : ''),
-                ),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text('Q版'),
-                  selected: _selectedStyle == 'Q版',
-                  onSelected: (selected) => _setStyle(selected ? 'Q版' : ''),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _descController,
-              decoration: const InputDecoration(
-                labelText: '描述（如：戴眼鏡的男孩）',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            // 只在未生成圖片時顯示生成按鈕
-            if (_base64Image == null && _imageUrl == null)
-              ElevatedButton(
-                onPressed: _loading
-                    ? null
-                    : () {
-                        FocusScope.of(context).unfocus(); // 按下時關閉鍵盤
-                        _generateAvatar();
-                      },
-                child: _loading
-                    ? const CircularProgressIndicator()
-                    : const Text('生成頭像'),
-              ),
-            const SizedBox(height: 24),
-            if (_base64Image != null)
-              Column(
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: SingleChildScrollView(
+              child: Column(
                 children: [
-                  const Text('Gemini 生成圖片結果：'),
-                  const SizedBox(height: 8),
-                  GestureDetector(
-                    onTap: () {
-                      if (_base64Image != null) {
-                        showDialog(
-                          context: context,
-                          builder: (context) => Dialog(
-                            backgroundColor: Colors.transparent,
-                            child: InteractiveViewer(
-                              child: ClipOval(
-                                child: Image.memory(
-                                  base64Decode(_base64Image!),
-                                  width: 360,
-                                  height: 360,
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                    child: ClipOval(
-                      child: SizedBox(
-                        width: 180,
-                        height: 180,
-                        child: Image.memory(
-                          base64Decode(_base64Image!),
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
+                  // 輔助輸入按鈕區塊
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      ElevatedButton(
-                        onPressed: _applyAvatar,
-                        child: const Text('套用頭像'),
+                      const Text('性別：'),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        label: const Text('男'),
+                        selected: _selectedGender == '男',
+                        onSelected: (selected) => _setGender(selected ? '男' : ''),
                       ),
-                      const SizedBox(width: 16),
-                      ElevatedButton(
-                        onPressed: _loading
-                            ? null
-                            : () {
-                                FocusScope.of(context).unfocus();
-                                _generateAvatar();
-                              },
-                        child: _loading
-                            ? const CircularProgressIndicator()
-                            : const Text('重新生成'),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        label: const Text('女'),
+                        selected: _selectedGender == '女',
+                        onSelected: (selected) => _setGender(selected ? '女' : ''),
                       ),
                     ],
                   ),
-                ],
-              )
-            else if (_imageUrl != null)
-              Column(
-                children: [
-                  const Text('DiceBear 生成結果：'),
                   const SizedBox(height: 8),
-                  GestureDetector(
-                    onTap: () {
-                      if (_imageUrl != null) {
-                        showDialog(
-                          context: context,
-                          builder: (context) => Dialog(
-                            backgroundColor: Colors.transparent,
-                            child: InteractiveViewer(
-                              child: ClipOval(
-                                child: Image.network(
-                                  _imageUrl!,
-                                  width: 360,
-                                  height: 360,
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                    child: ClipOval(
-                      child: SizedBox(
-                        width: 180,
-                        height: 180,
-                        child: Image.network(
-                          _imageUrl!,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      ElevatedButton(
-                        onPressed: _applyAvatar,
-                        child: const Text('套用頭像'),
+                      const Text('髮型：'),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        label: const Text('長髮'),
+                        selected: _selectedHair == '長髮',
+                        onSelected: (selected) => _setHair(selected ? '長髮' : ''),
                       ),
-                      const SizedBox(width: 16),
-                      ElevatedButton(
-                        onPressed: _loading
-                            ? null
-                            : () {
-                                FocusScope.of(context).unfocus();
-                                _generateAvatar();
-                              },
-                        child: _loading
-                            ? const CircularProgressIndicator()
-                            : const Text('重新生成'),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        label: const Text('短髮'),
+                        selected: _selectedHair == '短髮',
+                        onSelected: (selected) => _setHair(selected ? '短髮' : ''),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  // 畫風選擇按鈕區塊
+                  Row(
+                    children: [
+                      const Text('畫風：'),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        label: const Text('日系'),
+                        selected: _selectedStyle == '日系',
+                        onSelected: (selected) => _setStyle(selected ? '日系' : ''),
+                      ),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        label: const Text('美式'),
+                        selected: _selectedStyle == '美式',
+                        onSelected: (selected) => _setStyle(selected ? '美式' : ''),
+                      ),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        label: const Text('Q版'),
+                        selected: _selectedStyle == 'Q版',
+                        onSelected: (selected) => _setStyle(selected ? 'Q版' : ''),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Text('範圍：'),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        label: const Text('頭像'),
+                        selected: _selectedBody == '半身',
+                        onSelected: (selected) => _setBody(selected ? '半身' : _selectedBody),
+                      ),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        label: const Text('全身'),
+                        selected: _selectedBody == '全身',
+                        onSelected: (selected) => _setBody(selected ? '全身' : _selectedBody),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _descController,
+                    decoration: const InputDecoration(
+                      labelText: '描述（如：戴眼鏡的男孩）',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // 只在未生成圖片時顯示生成按鈕
+                  if (_base64Image == null && _imageUrl == null)
+                    ElevatedButton(
+                      onPressed: _loading
+                          ? null
+                          : () {
+                              FocusScope.of(context).unfocus(); // 按下時關閉鍵盤
+                              _generateAvatar();
+                            },
+                      child: _loading
+                          ? const CircularProgressIndicator()
+                          : const Text('生成頭像'),
+                    ),
+                  const SizedBox(height: 24),
+                  if (_base64Image != null)
+                    Column(
+                      children: [
+                        const Text('Gemini 生成圖片結果：'),
+                        const SizedBox(height: 8),
+                        GestureDetector(
+                          onTap: () {
+                            if (_base64Image != null) {
+                              showDialog(
+                                context: context,
+                                builder: (context) => Dialog(
+                                  backgroundColor: Colors.transparent,
+                                  child: InteractiveViewer(
+                                    child: ClipOval(
+                                      child: Image.memory(
+                                        base64Decode(_base64Image!),
+                                        width: 360,
+                                        height: 360,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                          child: ClipOval(
+                            child: SizedBox(
+                              width: 180,
+                              height: 180,
+                              child: Image.memory(
+                                base64Decode(_base64Image!),
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            ElevatedButton(
+                              onPressed: _applyAvatar,
+                              child: const Text('套用頭像'),
+                            ),
+                            const SizedBox(width: 16),
+                            ElevatedButton(
+                              onPressed: _loading
+                                  ? null
+                                  : () {
+                                      FocusScope.of(context).unfocus();
+                                      _generateAvatar();
+                                    },
+                              child: _loading
+                                  ? const CircularProgressIndicator()
+                                  : const Text('重新生成'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    )
+                  else if (_imageUrl != null)
+                    Column(
+                      children: [
+                        const Text('DiceBear 生成結果：'),
+                        const SizedBox(height: 8),
+                        GestureDetector(
+                          onTap: () {
+                            if (_imageUrl != null) {
+                              showDialog(
+                                context: context,
+                                builder: (context) => Dialog(
+                                  backgroundColor: Colors.transparent,
+                                  child: InteractiveViewer(
+                                    child: ClipOval(
+                                      child: Image.network(
+                                        _imageUrl!,
+                                        width: 360,
+                                        height: 360,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                          child: ClipOval(
+                            child: SizedBox(
+                              width: 180,
+                              height: 180,
+                              child: Image.network(
+                                _imageUrl!,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            ElevatedButton(
+                              onPressed: _applyAvatar,
+                              child: const Text('套用頭像'),
+                            ),
+                            const SizedBox(width: 16),
+                            ElevatedButton(
+                              onPressed: _loading
+                                  ? null
+                                  : () {
+                                      FocusScope.of(context).unfocus();
+                                      _generateAvatar();
+                                    },
+                              child: _loading
+                                  ? const CircularProgressIndicator()
+                                  : const Text('重新生成'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                 ],
               ),
-          ],
+            ),
+          ),
         ),
       ),
+      resizeToAvoidBottomInset: true,
     );
   }
 }
