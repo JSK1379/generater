@@ -284,13 +284,12 @@ class _SettingsPageState extends State<SettingsPage> {
     _prepareAvatarThumbnail();
     // 每分鐘自動檢查是否進入通勤時段
     _autoCommuteTimer = Timer.periodic(const Duration(minutes: 1), (_) => _autoCheckCommutePeriod());
-  }
-
-  Future<void> _prepareAvatarThumbnail() async {
+  }  Future<void> _prepareAvatarThumbnail() async {
     // 取得頭像縮圖 bytes，8x8 PNG
     final provider = _avatarImage;
     if (provider == null) return;
-    final config = ImageConfiguration(size: const Size(80, 80));
+    
+    const config = ImageConfiguration(size: Size(80, 80));
     final completer = Completer<ui.Image>();
     final stream = provider.resolve(config);
     void listener(ImageInfo info, bool _) {
@@ -341,7 +340,7 @@ class _SettingsPageState extends State<SettingsPage> {
   TimeOfDay? _commuteStartEvening;
   TimeOfDay? _commuteEndEvening;
   bool _isTrackingCommute = false;
-  List<Map<String, dynamic>> _commuteRoute = [];
+  final List<Map<String, dynamic>> _commuteRoute = [];
   Timer? _commuteTimer;
 
   Future<void> _requestLocationPermission() async {
@@ -390,9 +389,7 @@ class _SettingsPageState extends State<SettingsPage> {
       (now.hour < _commuteEndEvening!.hour || (now.hour == _commuteEndEvening!.hour && now.minute <= _commuteEndEvening!.minute));
     return inMorning || inEvening;
   }
-
   void _autoCheckCommutePeriod() {
-    final now = TimeOfDay.now();
     bool inPeriod = _isNowInCommutePeriod();
     if (inPeriod && !_isTrackingCommute) {
       _autoTracking = true;
@@ -426,6 +423,32 @@ class _SettingsPageState extends State<SettingsPage> {
     );
     if (picked != null && picked != initialTime) {
       onTimeSelected(picked);
+    }
+  }
+
+  Future<void> _toggleAdvertise(bool value) async {
+    if (value) {
+      // 開始廣播
+      final nickname = _nicknameController.text.isEmpty ? 'Unknown' : _nicknameController.text;
+      
+      // 準備 manufacturer data，包含 magic bytes + 頭像縮圖
+      final List<int> manufacturerData = [0x42, 0x4C, 0x45, 0x41]; // BLEA magic bytes
+      if (_avatarThumbnailBytes != null) {
+        manufacturerData.addAll(_avatarThumbnailBytes!);
+      }
+        final advertiseData = AdvertiseData(
+        localName: nickname,
+        manufacturerId: 0x1234,
+        manufacturerData: Uint8List.fromList(manufacturerData),
+        includeDeviceName: true,
+      );
+      
+      await _blePeripheral.start(advertiseData: advertiseData);
+      setState(() => _isAdvertising = true);
+    } else {
+      // 停止廣播
+      await _blePeripheral.stop();
+      setState(() => _isAdvertising = false);
     }
   }
 
