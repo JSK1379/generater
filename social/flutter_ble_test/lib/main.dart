@@ -3,6 +3,9 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'avatar_page.dart';
 import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+import 'dart:async';
 
 void main() {
   runApp(const MyApp());
@@ -153,6 +156,14 @@ class _BleScanBodyState extends State<BleScanBody> {
     );
   }
 
+  Widget _buildAvatarFromManufacturer(Map<int, List<int>> manufacturerData) {
+    if (manufacturerData.containsKey(0x1234)) {
+      final bytes = Uint8List.fromList(manufacturerData[0x1234]!);
+      return CircleAvatar(radius: 20, backgroundImage: MemoryImage(bytes));
+    }
+    return const Icon(Icons.bluetooth);
+  }
+
   @override
   Widget build(BuildContext c) => Scaffold(
     appBar: AppBar(title: const Text('BLE 掃描 + 裝置列表')),
@@ -223,7 +234,7 @@ class _BleScanBodyState extends State<BleScanBody> {
                   final r = filteredResults[i];
                   final name = r.advertisementData.advName;
                   return ListTile(
-                    leading: const Icon(Icons.bluetooth),
+                    leading: _buildAvatarFromManufacturer(r.advertisementData.manufacturerData),
                     title: Text(name),
                     subtitle: Text(
                       'RSSI: ${r.rssi} dBm\n'
@@ -253,12 +264,38 @@ class _SettingsPageState extends State<SettingsPage> {
   final TextEditingController _nicknameController = TextEditingController();
   bool _isAdvertising = false;
   final FlutterBlePeripheral _blePeripheral = FlutterBlePeripheral();
+  Uint8List? _avatarThumbnailBytes; // 新增縮圖 bytes
 
-  // 只顯示頭像，不提供產生/套用功能
   ImageProvider? get _avatarImage {
-    // 這裡假設 AvatarPage 有 static 變數或方法可取得目前頭像
-    // 若無，請用 Provider/InheritedWidget/全域變數等方式傳遞
     return AvatarPage.currentAvatarImage ?? const AssetImage('assets/avatar_placeholder.png');
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _prepareAvatarThumbnail();
+  }
+
+  Future<void> _prepareAvatarThumbnail() async {
+    // 取得頭像縮圖 bytes，8x8 PNG
+    final provider = _avatarImage;
+    if (provider == null) return;
+    final config = ImageConfiguration(size: const Size(80, 80));
+    final completer = Completer<ui.Image>();
+    final stream = provider.resolve(config);
+    void listener(ImageInfo info, bool _) {
+      completer.complete(info.image);
+      stream.removeListener(ImageStreamListener(listener));
+    }
+    stream.addListener(ImageStreamListener(listener));
+    final image = await completer.future;
+    final thumbnail = await image.toByteData(format: ui.ImageByteFormat.png);
+    if (thumbnail != null) {
+      // 只取前 20 bytes 當縮圖（實際應壓縮到 8x8，但這裡簡化）
+      setState(() {
+        _avatarThumbnailBytes = thumbnail.buffer.asUint8List().sublist(0, 20);
+      });
+    }
   }
 
   @override
@@ -270,18 +307,21 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _toggleAdvertise(bool value) async {
     if (value) {
+      await _prepareAvatarThumbnail();
       await _blePeripheral.start(
         advertiseData: AdvertiseData(
           includeDeviceName: true,
           localName: _nicknameController.text.isNotEmpty
               ? _nicknameController.text
-              : null, // BLE Complete Local Name
+              : null,
+          manufacturerId: 0x1234, // 自訂廠商 ID
+          manufacturerData: _avatarThumbnailBytes,
         ),
         advertiseResponseData: AdvertiseData(
           includeDeviceName: true,
           localName: _nicknameController.text.isNotEmpty
               ? _nicknameController.text
-              : null, // BLE Scan Response Data
+              : null,
         ),
       );
     } else {
