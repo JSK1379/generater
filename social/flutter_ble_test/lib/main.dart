@@ -159,7 +159,12 @@ class _BleScanBodyState extends State<BleScanBody> {
   Widget _buildAvatarFromManufacturer(Map<int, List<int>> manufacturerData) {
     if (manufacturerData.containsKey(0x1234)) {
       final bytes = Uint8List.fromList(manufacturerData[0x1234]!);
-      return CircleAvatar(radius: 20, backgroundImage: MemoryImage(bytes));
+      if (bytes.length > 4 &&
+          bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x41) {
+        // magic bytes 符合才顯示頭像
+        final avatarBytes = bytes.sublist(4);
+        return CircleAvatar(radius: 20, backgroundImage: MemoryImage(avatarBytes));
+      }
     }
     return const Icon(Icons.bluetooth);
   }
@@ -308,6 +313,13 @@ class _SettingsPageState extends State<SettingsPage> {
   void _toggleAdvertise(bool value) async {
     if (value) {
       await _prepareAvatarThumbnail();
+      // magic bytes: [0x42, 0x4C, 0x45, 0x41] = 'BLEA'
+      Uint8List? advData;
+      if (_avatarThumbnailBytes != null) {
+        advData = Uint8List(4 + _avatarThumbnailBytes!.length);
+        advData.setAll(0, [0x42, 0x4C, 0x45, 0x41]);
+        advData.setAll(4, _avatarThumbnailBytes!);
+      }
       await _blePeripheral.start(
         advertiseData: AdvertiseData(
           includeDeviceName: true,
@@ -315,7 +327,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ? _nicknameController.text
               : null,
           manufacturerId: 0x1234, // 自訂廠商 ID
-          manufacturerData: _avatarThumbnailBytes,
+          manufacturerData: advData,
         ),
         advertiseResponseData: AdvertiseData(
           includeDeviceName: true,
