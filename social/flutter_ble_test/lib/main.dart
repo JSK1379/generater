@@ -6,6 +6,9 @@ import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'dart:async';
+import 'package:geolocator/geolocator.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 void main() {
   runApp(const MyApp());
@@ -279,6 +282,8 @@ class _SettingsPageState extends State<SettingsPage> {
   void initState() {
     super.initState();
     _prepareAvatarThumbnail();
+    // 每分鐘自動檢查是否進入通勤時段
+    _autoCommuteTimer = Timer.periodic(const Duration(minutes: 1), (_) => _autoCheckCommutePeriod());
   }
 
   Future<void> _prepareAvatarThumbnail() async {
@@ -307,52 +312,121 @@ class _SettingsPageState extends State<SettingsPage> {
   void dispose() {
     _blePeripheral.stop();
     _nicknameController.dispose();
+    _commuteTimer?.cancel();
+    _autoCommuteTimer?.cancel();
     super.dispose();
   }
 
-  void _toggleAdvertise(bool value) async {
-    if (value) {
-      await _prepareAvatarThumbnail();
-      // magic bytes: [0x42, 0x4C, 0x45, 0x41] = 'BLEA'
-      Uint8List? advData;
-      if (_avatarThumbnailBytes != null) {
-        advData = Uint8List(4 + _avatarThumbnailBytes!.length);
-        advData.setAll(0, [0x42, 0x4C, 0x45, 0x41]);
-        advData.setAll(4, _avatarThumbnailBytes!);
-      }
-      await _blePeripheral.start(
-        advertiseData: AdvertiseData(
-          includeDeviceName: true,
-          localName: _nicknameController.text.isNotEmpty
-              ? _nicknameController.text
-              : null,
-          manufacturerId: 0x1234, // 自訂廠商 ID
-          manufacturerData: advData,
-        ),
-        advertiseResponseData: AdvertiseData(
-          includeDeviceName: true,
-          localName: _nicknameController.text.isNotEmpty
-              ? _nicknameController.text
-              : null,
-        ),
-      );
-    } else {
-      await _blePeripheral.stop();
+  Future<void> uploadCommuteRoute() async {
+    if (_commuteRoute.isEmpty) return;
+    final url = Uri.parse('https://your.api/commute/upload'); // 請替換為實際 API
+    final body = jsonEncode({
+      'user': _nicknameController.text,
+      'date': DateTime.now().toIso8601String().substring(0, 10),
+      'route': _commuteRoute,
+    });
+    try {
+      final res = await http.post(url, body: body, headers: {'Content-Type': 'application/json'});
+      debugPrint('上傳結果: ${res.statusCode} ${res.body}');
+    } catch (e) {
+      debugPrint('上傳失敗: $e');
     }
-    setState(() => _isAdvertising = value);
   }
+
+  Timer? _autoCommuteTimer;
+  bool _autoTracking = false;
 
   TimeOfDay? _commuteStartMorning;
   TimeOfDay? _commuteEndMorning;
   TimeOfDay? _commuteStartEvening;
   TimeOfDay? _commuteEndEvening;
+  bool _isTrackingCommute = false;
+  List<Map<String, dynamic>> _commuteRoute = [];
+  Timer? _commuteTimer;
 
-  Future<void> _pickTime(BuildContext context, TimeOfDay? initial, void Function(TimeOfDay) onPicked) async {
-    final picked = await showTimePicker(
+  Future<void> _requestLocationPermission() async {
+    final status = await Geolocator.requestPermission();
+    if (status == LocationPermission.denied || status == LocationPermission.deniedForever) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('請授權定位權限才能記錄通勤路線')),
+        );
+      }
+    }
+  }
+
+  void _startCommuteTracking() async {
+    await _requestLocationPermission();
+    _commuteRoute.clear();
+    _commuteTimer?.cancel();
+    _commuteTimer = Timer.periodic(const Duration(minutes: 2), (_) async {
+      final pos = await Geolocator.getCurrentPosition();
+      setState(() {
+        _commuteRoute.add({
+          'lat': pos.latitude,
+          'lng': pos.longitude,
+          'ts': DateTime.now().toIso8601String(),
+        });
+      });
+    });
+    setState(() => _isTrackingCommute = true);
+  }
+
+  void _stopCommuteTracking() {
+    _commuteTimer?.cancel();
+    setState(() => _isTrackingCommute = false);
+    debugPrint('通勤路線：${_commuteRoute.toString()}');
+    // 自動模式下由 _autoCheckCommutePeriod 呼叫 uploadCommuteRoute
+    if (!_autoTracking) uploadCommuteRoute();
+  }
+
+  bool _isNowInCommutePeriod() {
+    final now = TimeOfDay.now();
+    bool inMorning = _commuteStartMorning != null && _commuteEndMorning != null &&
+      (_commuteStartMorning!.hour < now.hour || (_commuteStartMorning!.hour == now.hour && _commuteStartMorning!.minute <= now.minute)) &&
+      (now.hour < _commuteEndMorning!.hour || (now.hour == _commuteEndMorning!.hour && now.minute <= _commuteEndMorning!.minute));
+    bool inEvening = _commuteStartEvening != null && _commuteEndEvening != null &&
+      (_commuteStartEvening!.hour < now.hour || (_commuteStartEvening!.hour == now.hour && _commuteStartEvening!.minute <= now.minute)) &&
+      (now.hour < _commuteEndEvening!.hour || (now.hour == _commuteEndEvening!.hour && now.minute <= _commuteEndEvening!.minute));
+    return inMorning || inEvening;
+  }
+
+  void _autoCheckCommutePeriod() {
+    final now = TimeOfDay.now();
+    bool inPeriod = _isNowInCommutePeriod();
+    if (inPeriod && !_isTrackingCommute) {
+      _autoTracking = true;
+      _startCommuteTracking();
+    } else if (!inPeriod && _isTrackingCommute && _autoTracking) {
+      _autoTracking = false;
+      _stopCommuteTracking();
+      uploadCommuteRoute();
+    }
+  }
+
+  void _toggleCommuteTracking(bool value) {
+    if (_autoTracking) return; // 自動模式下不允許手動切換
+    if (value) {
+      _startCommuteTracking();
+    } else {
+      _stopCommuteTracking();
+    }
+  }
+
+  Future<void> _pickTime(BuildContext context, TimeOfDay? initialTime, ValueChanged<TimeOfDay> onTimeSelected) async {
+    final TimeOfDay? picked = await showTimePicker(
       context: context,
-      initialTime: initial ?? TimeOfDay.now(),
+      initialTime: initialTime ?? TimeOfDay.now(),
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+          child: child!,
+        );
+      },
     );
-    if (picked != null) onPicked(picked);
+    if (picked != null && picked != initialTime) {
+      onTimeSelected(picked);
+    }
   }
 
   @override
@@ -452,6 +526,22 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('自動記錄通勤路線', style: TextStyle(fontSize: 16)),
+                      Switch(
+                        value: _isTrackingCommute,
+                        onChanged: _autoTracking ? null : (v) => _toggleCommuteTracking(v),
+                      ),
+                    ],
+                  ),
+                  if (_autoTracking)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 4.0),
+                      child: Text('已自動啟動，將於通勤時段結束自動上傳', style: TextStyle(fontSize: 12, color: Colors.blue)),
+                    ),
                   const SizedBox(height: 24),
                 ],
               ),
