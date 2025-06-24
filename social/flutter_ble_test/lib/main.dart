@@ -342,6 +342,19 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() => _isAdvertising = value);
   }
 
+  TimeOfDay? _commuteStartMorning;
+  TimeOfDay? _commuteEndMorning;
+  TimeOfDay? _commuteStartEvening;
+  TimeOfDay? _commuteEndEvening;
+
+  Future<void> _pickTime(BuildContext context, TimeOfDay? initial, void Function(TimeOfDay) onPicked) async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initial ?? TimeOfDay.now(),
+    );
+    if (picked != null) onPicked(picked);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -408,6 +421,38 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 24),
+                  const Text('通勤時段設定', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Text('上班：'),
+                      TextButton(
+                        onPressed: () => _pickTime(context, _commuteStartMorning, (t) => setState(() => _commuteStartMorning = t)),
+                        child: Text(_commuteStartMorning == null ? '開始時間' : _commuteStartMorning!.format(context)),
+                      ),
+                      const Text('~'),
+                      TextButton(
+                        onPressed: () => _pickTime(context, _commuteEndMorning, (t) => setState(() => _commuteEndMorning = t)),
+                        child: Text(_commuteEndMorning == null ? '結束時間' : _commuteEndMorning!.format(context)),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      const Text('下班：'),
+                      TextButton(
+                        onPressed: () => _pickTime(context, _commuteStartEvening, (t) => setState(() => _commuteStartEvening = t)),
+                        child: Text(_commuteStartEvening == null ? '開始時間' : _commuteStartEvening!.format(context)),
+                      ),
+                      const Text('~'),
+                      TextButton(
+                        onPressed: () => _pickTime(context, _commuteEndEvening, (t) => setState(() => _commuteEndEvening = t)),
+                        child: Text(_commuteEndEvening == null ? '結束時間' : _commuteEndEvening!.format(context)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
