@@ -15,6 +15,9 @@ dependencies:
   http: ^1.2.1
   flutter_ble_peripheral: ^1.2.6
   geolocator: ^14.0.1
+  image_picker: ^1.0.7
+  path_provider: ^2.0.0
+  shared_preferences: ^2.0.0
 
 
 dev_dependencies:
