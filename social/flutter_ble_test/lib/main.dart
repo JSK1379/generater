@@ -381,19 +381,20 @@ class _SettingsPageState extends State<SettingsPage> {
   final List<Map<String, dynamic>> _commuteRoute = [];
   Timer? _commuteTimer;
 
-  Future<void> _requestLocationPermission() async {
-    final status = await Geolocator.requestPermission();
-    if (status == LocationPermission.denied || status == LocationPermission.deniedForever) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('請授權定位權限才能記錄通勤路線')),
-        );
+  void _startCommuteTracking() async {
+    // 先檢查定位權限
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('請授權定位權限才能記錄通勤路線')),
+          );
+        }
+        return;
       }
     }
-  }
-
-  void _startCommuteTracking() async {
-    await _requestLocationPermission();
     _commuteRoute.clear();
     _commuteTimer?.cancel();
     _commuteTimer = Timer.periodic(const Duration(minutes: 2), (_) async {
