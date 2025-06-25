@@ -37,11 +37,80 @@ class MainTabPage extends StatefulWidget {
 
 class _MainTabPageState extends State<MainTabPage> {
   int _currentIndex = 0;
-  final List<Widget> _pages = const [
-    BleScanBody(),
-    AvatarPage(),
-    SettingsPage(),
+  // 狀態提升：BLE 廣播相關
+  bool _isAdvertising = false;
+  final FlutterBlePeripheral _blePeripheral = FlutterBlePeripheral();
+  Uint8List? _avatarThumbnailBytes;
+  final TextEditingController _nicknameController = TextEditingController();
+
+  // 暱稱持久化：讀取
+  @override
+  void initState() {
+    super.initState();
+    _loadNicknameFromPrefs();
+  }
+
+  Future<void> _loadNicknameFromPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final nickname = prefs.getString('nickname') ?? '';
+    _nicknameController.text = nickname;
+  }
+
+  // 暱稱持久化：儲存
+  Future<void> _saveNicknameToPrefs(String nickname) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('nickname', nickname);
+  }
+
+  // 狀態提升：toggleAdvertise
+  Future<void> _toggleAdvertise(bool value) async {
+    if (value) {
+      await _blePeripheral.stop(); // 先確保已停止
+      await Future.delayed(const Duration(milliseconds: 500)); // 多等一點時間
+      final nickname = _nicknameController.text.isEmpty ? 'Unknown' : _nicknameController.text;
+      final nicknameBytes = utf8.encode(nickname);
+      // 不帶縮圖
+      final List<int> manufacturerData = [0x42, 0x4C, 0x45, 0x41];
+      manufacturerData.add(nicknameBytes.length); // 1 byte 暱稱長度
+      manufacturerData.addAll(nicknameBytes); // 暱稱 bytes
+      manufacturerData.add(0); // 1 byte 縮圖長度=0
+      // 不加縮圖 bytes
+      debugPrint('廣播 manufacturerData: $manufacturerData, 長度: ${manufacturerData.length}');
+      final advertiseData = AdvertiseData(
+        localName: nickname,
+        manufacturerId: 0x1234,
+        manufacturerData: Uint8List.fromList(manufacturerData),
+        includeDeviceName: true,
+      );
+      debugPrint('Start BLE advertise, localName: $nickname');
+      await _blePeripheral.start(advertiseData: advertiseData);
+      setState(() => _isAdvertising = true);
+    } else {
+      await _blePeripheral.stop();
+      setState(() => _isAdvertising = false);
+    }
+  }
+
+  // 狀態提升：設定縮圖
+  void _setAvatarThumbnailBytes(Uint8List? bytes) {
+    setState(() {
+      _avatarThumbnailBytes = bytes;
+    });
+  }
+
+  List<Widget> get _pages => [
+    const BleScanBody(),
+    const AvatarPage(),
+    SettingsPage(
+      isAdvertising: _isAdvertising,
+      onToggleAdvertise: _toggleAdvertise,
+      nicknameController: _nicknameController,
+      setAvatarThumbnailBytes: _setAvatarThumbnailBytes,
+      avatarThumbnailBytes: _avatarThumbnailBytes,
+      onSaveNickname: _saveNicknameToPrefs, // 新增 callback
+    ),
   ];
+
   final List<BottomNavigationBarItem> _items = const [
     BottomNavigationBarItem(icon: Icon(Icons.bluetooth), label: '藍牙'),
     BottomNavigationBarItem(icon: Icon(Icons.face), label: 'Avatar'),
@@ -73,6 +142,8 @@ class _BleScanBodyState extends State<BleScanBody> {
   BluetoothAdapterState? _btState;
   BluetoothDevice? _connectedDevice;
   List<BluetoothService> _services = [];
+  // 新增：記錄展開的卡片 index
+  final Set<int> _expandedIndexes = {};
 
   @override
   void initState() {
@@ -124,6 +195,12 @@ class _BleScanBodyState extends State<BleScanBody> {
   Future<void> _startScan() async {
     setState(() => _isScanning = true);
     await FlutterBluePlus.startScan(); // 不設 timeout，持續掃描
+    // 新增：5秒後自動停止掃描
+    Future.delayed(const Duration(seconds: 1), () async {
+      if (mounted && _isScanning) {
+        await _stopScan(); // 確保 setState 正確觸發
+      }
+    });
   }
 
   Future<void> _stopScan() async {
@@ -163,14 +240,20 @@ class _BleScanBodyState extends State<BleScanBody> {
     );
   }
 
+  // 由 manufacturerData 取縮圖
   Widget _buildAvatarFromManufacturer(Map<int, List<int>> manufacturerData) {
     if (manufacturerData.containsKey(0x1234)) {
-      final bytes = Uint8List.fromList(manufacturerData[0x1234]!);
-      if (bytes.length > 4 &&
+      final bytes = manufacturerData[0x1234]!;
+      if (bytes.length > 6 &&
           bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x41) {
-        // magic bytes 符合才顯示頭像
-        final avatarBytes = bytes.sublist(4);
-        return CircleAvatar(radius: 20, backgroundImage: MemoryImage(avatarBytes));
+        final nameLen = bytes[4];
+        if (bytes.length >= 6 + nameLen) {
+          final avatarLen = bytes[5 + nameLen];
+          if (avatarLen > 0 && bytes.length >= 6 + nameLen + avatarLen) {
+            final avatarBytes = bytes.sublist(6 + nameLen, 6 + nameLen + avatarLen);
+            return CircleAvatar(radius: 20, backgroundImage: MemoryImage(Uint8List.fromList(avatarBytes)));
+          }
+        }
       }
     }
     return const Icon(Icons.bluetooth);
@@ -237,26 +320,131 @@ class _BleScanBodyState extends State<BleScanBody> {
         )
       else
         Expanded(
-          child: _scanResults.where((r) => r.advertisementData.advName.isNotEmpty).isEmpty
+          child: _scanResults.where((r) => r.advertisementData.advName.isNotEmpty || r.device.platformName.isNotEmpty).isEmpty
             ? const Center(child: Text('沒有人在這個地方QQ'))
             : ListView.builder(
-                itemCount: _scanResults.where((r) => r.advertisementData.advName.isNotEmpty).length,
+                itemCount: _scanResults.where((r) => r.advertisementData.advName.isNotEmpty || r.device.platformName.isNotEmpty).length,
                 itemBuilder: (_, i) {
-                  final filteredResults = _scanResults.where((r) => r.advertisementData.advName.isNotEmpty).toList();
+                  final filteredResults = _scanResults.where((r) => r.advertisementData.advName.isNotEmpty || r.device.platformName.isNotEmpty).toList();
                   final r = filteredResults[i];
-                  final name = r.advertisementData.advName;
-                  return ListTile(
-                    leading: _buildAvatarFromManufacturer(r.advertisementData.manufacturerData),
-                    title: Text(name),
-                    subtitle: Text(
-                      'RSSI: ${r.rssi} dBm\n'
-                      'ID: ${r.device.remoteId.str}\n'
-                      'Manufacturer: '
-                      '${r.advertisementData.manufacturerData.isNotEmpty ? r.advertisementData.manufacturerData : "無"}'
-                    ),
-                    trailing: ElevatedButton(
-                      onPressed: () => _connect(r.device),
-                      child: const Text('連接'),
+                  // 優先解析 manufacturerData 內的暱稱
+                  String? nicknameFromManufacturer;
+                  final mdata = r.advertisementData.manufacturerData;
+                  if (mdata.containsKey(0x1234)) {
+                    final bytes = mdata[0x1234]!;
+                    if (bytes.length > 5 &&
+                        bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x41) {
+                      try {
+                        final nameLen = bytes[4];
+                        if (bytes.length >= 6 + nameLen) {
+                          final nameBytes = bytes.sublist(5, 5 + nameLen);
+                          nicknameFromManufacturer = utf8.decode(nameBytes, allowMalformed: true);
+                        }
+                      } catch (_) {}
+                    }
+                  }
+                  final name = nicknameFromManufacturer?.isNotEmpty == true
+                      ? nicknameFromManufacturer!
+                      : (r.advertisementData.advName.isNotEmpty ? r.advertisementData.advName : r.device.platformName);
+                  // 判斷是否同 app magic bytes
+                  bool isSameApp = false;
+                  if (mdata.containsKey(0x1234)) {
+                    final bytes = mdata[0x1234]!;
+                    if (bytes.length >= 4 && bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x41) {
+                      isSameApp = true;
+                    }
+                  }
+                  final displayName = isSameApp ? '★$name' : name;
+                  final isExpanded = _expandedIndexes.contains(i);
+                  return Card(
+                    margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () {
+                        setState(() {
+                          if (isExpanded) {
+                            _expandedIndexes.remove(i);
+                          } else {
+                            _expandedIndexes.add(i);
+                          }
+                        });
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                _buildAvatarFromManufacturer(r.advertisementData.manufacturerData),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    displayName,
+                                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () => _connect(r.device),
+                                  child: const Text('連接'),
+                                ),
+                                Icon(isExpanded ? Icons.expand_less : Icons.expand_more),
+                              ],
+                            ),
+                            AnimatedCrossFade(
+                              firstChild: const SizedBox.shrink(),
+                              secondChild: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    'Complete Local Name:',
+                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                  Text(r.advertisementData.advName.isNotEmpty ? r.advertisementData.advName : '(無)'),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'ID:',
+                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                  Text(r.device.remoteId.str),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'RSSI:',
+                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                  Text('${r.rssi} dBm'),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'Manufacturer:',
+                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                  Text(r.advertisementData.manufacturerData.isNotEmpty ? r.advertisementData.manufacturerData.toString() : '無'),
+                                  // 顯示解碼後的暱稱（from manufacturerData）
+                                  if (r.advertisementData.manufacturerData.containsKey(0x1234))
+                                    Builder(
+                                      builder: (_) {
+                                        final bytes = r.advertisementData.manufacturerData[0x1234]!;
+                                        if (bytes.length > 5 &&
+                                            bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x41) {
+                                          try {
+                                            final nameLen = bytes[4];
+                                            if (bytes.length >= 6 + nameLen) {
+                                              // final nameBytes = bytes.sublist(5, 5 + nameLen); // 已無需使用，移除
+                                            }
+                                          } catch (_) {}
+                                        }
+                                        return Text('暱稱(解碼): ${(nicknameFromManufacturer != null && nicknameFromManufacturer.isNotEmpty) ? nicknameFromManufacturer : "(無)"}', style: const TextStyle(color: Colors.blue));
+                                      },
+                                    ),
+                                ],
+                              ),
+                              crossFadeState: isExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+                              duration: const Duration(milliseconds: 250),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   );
                 },
@@ -267,19 +455,27 @@ class _BleScanBodyState extends State<BleScanBody> {
 }
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+  final bool isAdvertising;
+  final Future<void> Function(bool) onToggleAdvertise;
+  final TextEditingController nicknameController;
+  final void Function(Uint8List?) setAvatarThumbnailBytes;
+  final Uint8List? avatarThumbnailBytes;
+  final Future<void> Function(String) onSaveNickname; // 新增 callback
+  const SettingsPage({
+    super.key,
+    required this.isAdvertising,
+    required this.onToggleAdvertise,
+    required this.nicknameController,
+    required this.setAvatarThumbnailBytes,
+    required this.avatarThumbnailBytes,
+    required this.onSaveNickname,
+  });
   @override
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  final TextEditingController _nicknameController = TextEditingController();
-  bool _isAdvertising = false;
-  final FlutterBlePeripheral _blePeripheral = FlutterBlePeripheral();
-  Uint8List? _avatarThumbnailBytes; // 新增縮圖 bytes
-
   ImageProvider? _avatarImageProvider;
-
   final ImagePicker _picker = ImagePicker();
 
   Future<void> _pickAvatarFromGallery() async {
@@ -338,17 +534,15 @@ class _SettingsPageState extends State<SettingsPage> {
     final image = await completer.future;
     final thumbnail = await image.toByteData(format: ui.ImageByteFormat.png);
     if (thumbnail != null) {
-      // 只取前 20 bytes 當縮圖（實際應壓縮到 8x8，但這裡簡化）
-      setState(() {
-        _avatarThumbnailBytes = thumbnail.buffer.asUint8List().sublist(0, 20);
-      });
+      // 只取前 20 bytes 當縮圖（實際應壓缩到 8x8，但這裡簡化）
+      widget.setAvatarThumbnailBytes(thumbnail.buffer.asUint8List().sublist(0, 20));
     }
   }
 
   @override
   void dispose() {
-    _blePeripheral.stop();
-    _nicknameController.dispose();
+    // _blePeripheral.stop();
+    // _nicknameController.dispose();
     _commuteTimer?.cancel();
     _autoCommuteTimer?.cancel();
     super.dispose();
@@ -358,7 +552,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (_commuteRoute.isEmpty) return;
     final url = Uri.parse('https://your.api/commute/upload'); // 請替換為實際 API
     final body = jsonEncode({
-      'user': _nicknameController.text,
+      'user': widget.nicknameController.text,
       'date': DateTime.now().toIso8601String().substring(0, 10),
       'route': _commuteRoute,
     });
@@ -465,185 +659,163 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<void> _toggleAdvertise(bool value) async {
-    if (value) {
-      // 開始廣播
-      final nickname = _nicknameController.text.isEmpty ? 'Unknown' : _nicknameController.text;
-      
-      // 準備 manufacturer data，包含 magic bytes + 頭像縮圖
-      final List<int> manufacturerData = [0x42, 0x4C, 0x45, 0x41]; // BLEA magic bytes
-      if (_avatarThumbnailBytes != null) {
-        manufacturerData.addAll(_avatarThumbnailBytes!);
-      }
-        final advertiseData = AdvertiseData(
-        localName: nickname,
-        manufacturerId: 0x1234,
-        manufacturerData: Uint8List.fromList(manufacturerData),
-        includeDeviceName: true,
-      );
-      
-      await _blePeripheral.start(advertiseData: advertiseData);
-      setState(() => _isAdvertising = true);
-    } else {
-      // 停止廣播
-      await _blePeripheral.stop();
-      setState(() => _isAdvertising = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('設置')),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: SafeArea(
           child: Padding(
-            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-            child: SingleChildScrollView(
-              reverse: true,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: GestureDetector(
-                      onTap: () {
-                        if (_avatarImageProvider != null) {
-                          showDialog(
-                            context: context,
-                            builder: (context) => Dialog(
-                              backgroundColor: Colors.transparent,
-                              child: InteractiveViewer(
-                                child: CircleAvatar(
-                                  radius: 180,
-                                  backgroundImage: _avatarImageProvider,
+            padding: const EdgeInsets.all(16.0),
+            child: Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+              child: SingleChildScrollView(
+                reverse: true,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: GestureDetector(
+                        onTap: () {
+                          if (_avatarImageProvider != null) {
+                            showDialog(
+                              context: context,
+                              builder: (context) => Dialog(
+                                backgroundColor: Colors.transparent,
+                                child: InteractiveViewer(
+                                  child: CircleAvatar(
+                                    radius: 180,
+                                    backgroundImage: _avatarImageProvider,
+                                  ),
                                 ),
+                              ),
+                            );
+                          }
+                        },
+                        child: CircleAvatar(
+                          radius: 80,
+                          backgroundImage: _avatarImageProvider,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Center(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          showModalBottomSheet(
+                            context: context,
+                            builder: (ctx) => SafeArea(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  ListTile(
+                                    leading: const Icon(Icons.photo_library),
+                                    title: const Text('從媒體選取'),
+                                    onTap: () async {
+                                      Navigator.pop(ctx);
+                                      await _pickAvatarFromGallery();
+                                    },
+                                  ),
+                                  ListTile(
+                                    leading: const Icon(Icons.auto_awesome),
+                                    title: const Text('生成圖片'),
+                                    onTap: () {
+                                      Navigator.pop(ctx);
+                                      // 切換到 Avatar 分頁
+                                      final mainTab = context.findAncestorStateOfType<_MainTabPageState>();
+                                      if (mainTab != null) {
+                                        mainTab.setState(() { mainTab._currentIndex = 1; });
+                                      }
+                                    },
+                                  ),
+                                ],
                               ),
                             ),
                           );
+                        },
+                        child: const Text('設定頭貼'),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text('暱稱', style: TextStyle(fontSize: 16)),
+                    TextField(
+                      controller: widget.nicknameController,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        hintText: '請輸入暱稱',
+                      ),
+                      onChanged: (v) async {
+                        await widget.onSaveNickname(v); // 新增：即時存入
+                        if (widget.isAdvertising) {
+                          await widget.onToggleAdvertise(false);
+                          await Future.delayed(const Duration(milliseconds: 300));
+                          await widget.onToggleAdvertise(true);
                         }
                       },
-                      child: CircleAvatar(
-                        radius: 80,
-                        backgroundImage: _avatarImageProvider,
-                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  Center(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        showModalBottomSheet(
-                          context: context,
-                          builder: (ctx) => SafeArea(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                ListTile(
-                                  leading: const Icon(Icons.photo_library),
-                                  title: const Text('從媒體選取'),
-                                  onTap: () async {
-                                    Navigator.pop(ctx);
-                                    await _pickAvatarFromGallery();
-                                  },
-                                ),
-                                ListTile(
-                                  leading: const Icon(Icons.auto_awesome),
-                                  title: const Text('生成圖片'),
-                                  onTap: () {
-                                    Navigator.pop(ctx);
-                                    // 切換到 Avatar 分頁
-                                    final mainTab = context.findAncestorStateOfType<_MainTabPageState>();
-                                    if (mainTab != null) {
-                                      mainTab.setState(() { mainTab._currentIndex = 1; });
-                                    }
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                      child: const Text('設定頭貼'),
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('開啟被偵測 (BLE 廣播)', style: TextStyle(fontSize: 16)),
+                        Switch(
+                          value: widget.isAdvertising,
+                          onChanged: (v) => widget.onToggleAdvertise(v),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  const Text('暱稱', style: TextStyle(fontSize: 16)),
-                  TextField(
-                    controller: _nicknameController,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      hintText: '請輸入暱稱',
+                    const SizedBox(height: 24),
+                    const Text('通勤時段設定', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Text('上班：'),
+                        TextButton(
+                          onPressed: () => _pickTime(context, _commuteStartMorning, (t) => setState(() => _commuteStartMorning = t)),
+                          child: Text(_commuteStartMorning == null ? '開始時間' : _commuteStartMorning!.format(context)),
+                        ),
+                        const Text('~'),
+                        TextButton(
+                          onPressed: () => _pickTime(context, _commuteEndMorning, (t) => setState(() => _commuteEndMorning = t)),
+                          child: Text(_commuteEndMorning == null ? '結束時間' : _commuteEndMorning!.format(context)),
+                        ),
+                      ],
                     ),
-                    onChanged: (v) {
-                      if (_isAdvertising) {
-                        _toggleAdvertise(false);
-                        Future.delayed(const Duration(milliseconds: 300), () {
-                          _toggleAdvertise(true);
-                        });
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('開啟被偵測 (BLE 廣播)', style: TextStyle(fontSize: 16)),
-                      Switch(
-                        value: _isAdvertising,
-                        onChanged: (v) => _toggleAdvertise(v),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  const Text('通勤時段設定', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Text('上班：'),
-                      TextButton(
-                        onPressed: () => _pickTime(context, _commuteStartMorning, (t) => setState(() => _commuteStartMorning = t)),
-                        child: Text(_commuteStartMorning == null ? '開始時間' : _commuteStartMorning!.format(context)),
-                      ),
-                      const Text('~'),
-                      TextButton(
-                        onPressed: () => _pickTime(context, _commuteEndMorning, (t) => setState(() => _commuteEndMorning = t)),
-                        child: Text(_commuteEndMorning == null ? '結束時間' : _commuteEndMorning!.format(context)),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      const Text('下班：'),
-                      TextButton(
-                        onPressed: () => _pickTime(context, _commuteStartEvening, (t) => setState(() => _commuteStartEvening = t)),
-                        child: Text(_commuteStartEvening == null ? '開始時間' : _commuteStartEvening!.format(context)),
-                      ),
-                      const Text('~'),
-                      TextButton(
-                        onPressed: () => _pickTime(context, _commuteEndEvening, (t) => setState(() => _commuteEndEvening = t)),
-                        child: Text(_commuteEndEvening == null ? '結束時間' : _commuteEndEvening!.format(context)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('自動記錄通勤路線', style: TextStyle(fontSize: 16)),
-                      Switch(
-                        value: _isTrackingCommute,
-                        onChanged: _autoTracking ? null : (v) => _toggleCommuteTracking(v),
-                      ),
-                    ],
-                  ),
-                  if (_autoTracking)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 4.0),
-                      child: Text('已自動啟動，將於通勤時段結束自動上傳', style: TextStyle(fontSize: 12, color: Colors.blue)),
+                    Row(
+                      children: [
+                        const Text('下班：'),
+                        TextButton(
+                          onPressed: () => _pickTime(context, _commuteStartEvening, (t) => setState(() => _commuteStartEvening = t)),
+                          child: Text(_commuteStartEvening == null ? '開始時間' : _commuteStartEvening!.format(context)),
+                        ),
+                        const Text('~'),
+                        TextButton(
+                          onPressed: () => _pickTime(context, _commuteEndEvening, (t) => setState(() => _commuteEndEvening = t)),
+                          child: Text(_commuteEndEvening == null ? '結束時間' : _commuteEndEvening!.format(context)),
+                        ),
+                      ],
                     ),
-                  const SizedBox(height: 24),
-                ],
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('自動記錄通勤路線', style: TextStyle(fontSize: 16)),
+                        Switch(
+                          value: _isTrackingCommute,
+                          onChanged: _autoTracking ? null : (v) => _toggleCommuteTracking(v),
+                        ),
+                      ],
+                    ),
+                    if (_autoTracking)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4.0),
+                        child: Text('已自動啟動，將於通勤時段結束自動上傳', style: TextStyle(fontSize: 12, color: Colors.blue)),
+                      ),
+                    const SizedBox(height: 24),
+                  ],
+                ),
               ),
             ),
           ),
