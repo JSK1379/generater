@@ -3,6 +3,7 @@ import 'ble_scan_body.dart';
 import 'settings_page.dart';
 import 'avatar_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:typed_data';
 
 class MainTabPage extends StatefulWidget {
   const MainTabPage({super.key});
@@ -14,6 +15,7 @@ class MainTabPageState extends State<MainTabPage> {
   int currentIndex = 0;
   final bool _isAdvertising = false;
   final TextEditingController _nicknameController = TextEditingController();
+  Uint8List? _avatarThumbnailBytes;
 
   @override
   void initState() {
@@ -32,15 +34,24 @@ class MainTabPageState extends State<MainTabPage> {
     await prefs.setString('nickname', nickname);
   }
 
+  void _setAvatarThumbnailBytes(Uint8List? bytes) {
+    setState(() {
+      _avatarThumbnailBytes = bytes;
+    });
+  }
+
   List<Widget> get _pages => [
     const BleScanBody(),
-    const AvatarPage(),
+    AvatarPage(
+      setAvatarThumbnailBytes: _setAvatarThumbnailBytes,
+      avatarThumbnailBytes: _avatarThumbnailBytes,
+    ),
     SettingsPage(
       isAdvertising: _isAdvertising,
       onToggleAdvertise: (v) async { return; }, // 由 SettingsPage 處理
       nicknameController: _nicknameController,
-      setAvatarThumbnailBytes: (_) {},
-      avatarThumbnailBytes: null,
+      setAvatarThumbnailBytes: _setAvatarThumbnailBytes,
+      avatarThumbnailBytes: _avatarThumbnailBytes,
       onSaveNickname: _saveNicknameToPrefs,
     ),
   ];

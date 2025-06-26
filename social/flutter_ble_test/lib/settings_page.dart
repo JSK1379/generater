@@ -68,7 +68,7 @@ class _SettingsPageState extends State<SettingsPage> {
       });
     } else {
       setState(() {
-        _avatarImageProvider = const AssetImage('assets/avatar_placeholder.png');
+        _avatarImageProvider = null; // 使用預設圖示
       });
     }
   }
@@ -99,8 +99,25 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    _loadAvatarFromPrefs();
+    // 優先使用傳入的 avatarThumbnailBytes，沒有的話才載入本地偏好設定
+    if (widget.avatarThumbnailBytes != null) {
+      setState(() {
+        _avatarImageProvider = MemoryImage(widget.avatarThumbnailBytes!);
+      });
+    } else {
+      _loadAvatarFromPrefs();
+    }
     _autoCommuteTimer = Timer.periodic(const Duration(minutes: 1), (_) => _autoCheckCommutePeriod());
+  }
+
+  @override
+  void didUpdateWidget(covariant SettingsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.avatarThumbnailBytes != null && widget.avatarThumbnailBytes != oldWidget.avatarThumbnailBytes) {
+      setState(() {
+        _avatarImageProvider = MemoryImage(widget.avatarThumbnailBytes!);
+      });
+    }
   }
 
   @override
@@ -223,6 +240,9 @@ class _SettingsPageState extends State<SettingsPage> {
                                   child: CircleAvatar(
                                     radius: 180,
                                     backgroundImage: _avatarImageProvider,
+                                    child: _avatarImageProvider == null 
+                                        ? const Icon(Icons.person, size: 180, color: Colors.grey)
+                                        : null,
                                   ),
                                 ),
                               ),
@@ -232,6 +252,9 @@ class _SettingsPageState extends State<SettingsPage> {
                         child: CircleAvatar(
                           radius: 80,
                           backgroundImage: _avatarImageProvider,
+                          child: _avatarImageProvider == null 
+                              ? const Icon(Icons.person, size: 80, color: Colors.grey)
+                              : null,
                         ),
                       ),
                     ),
@@ -276,12 +299,19 @@ class _SettingsPageState extends State<SettingsPage> {
                     const Text('暱稱', style: TextStyle(fontSize: 16)),
                     TextField(
                       controller: widget.nicknameController,
+                      maxLength: 8,
                       decoration: const InputDecoration(
                         border: OutlineInputBorder(),
                         hintText: '請輸入暱稱',
+                        counterText: '',
                       ),
                       onChanged: (v) async {
-                        await widget.onSaveNickname(v);
+                        if (v.runes.length > 8) {
+                          final newText = String.fromCharCodes(v.runes.take(8));
+                          widget.nicknameController.text = newText;
+                          widget.nicknameController.selection = TextSelection.fromPosition(TextPosition(offset: newText.length));
+                        }
+                        await widget.onSaveNickname(widget.nicknameController.text);
                         if (widget.isAdvertising) {
                           await widget.onToggleAdvertise(false);
                           await Future.delayed(const Duration(milliseconds: 300));

@@ -4,7 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 class AvatarUtils {
-  /// 將 ImageProvider 壓縮成 8x8 PNG 並回傳前 12 bytes
+  /// 將 ImageProvider 壓縮成 8x8 PNG 並回傳前 64 bytes
   static Future<Uint8List?> compressAvatarImage(ImageProvider provider) async {
     const config = ImageConfiguration(size: Size(80, 80));
     final completer = Completer<ui.Image>();
@@ -28,8 +28,8 @@ class AvatarUtils {
     final byteData = await smallImage.toByteData(format: ui.ImageByteFormat.png);
     if (byteData != null) {
       final bytes = byteData.buffer.asUint8List();
-      debugPrint('compressAvatarImage: bytes.length = \\${bytes.length}, bytes = \\${bytes.sublist(0, bytes.length > 24 ? 24 : bytes.length)}');
-      return bytes.length > 12 ? bytes.sublist(0, 12) : bytes;
+      debugPrint('compressAvatarImage: bytes.length = \\${bytes.length}, bytes = \\${bytes.sublist(0, bytes.length > 64 ? 64 : bytes.length)}');
+      return bytes.length > 64 ? bytes.sublist(0, 64) : bytes;
     }
     debugPrint('compressAvatarImage: byteData is null');
     return null;

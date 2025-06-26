@@ -4,7 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class AvatarPage extends StatefulWidget {
-  const AvatarPage({super.key});
+  const AvatarPage({
+    super.key,
+    required this.setAvatarThumbnailBytes,
+    required this.avatarThumbnailBytes,
+  });
+
+  final void Function(Uint8List?) setAvatarThumbnailBytes;
+  final Uint8List? avatarThumbnailBytes;
 
   // 新增：全域靜態頭像變數
   static ImageProvider? currentAvatarImage;
@@ -29,17 +36,22 @@ class _AvatarPageState extends State<AvatarPage> {
   void _applyAvatar() {
     if (_base64Image != null) {
       AvatarPage.currentAvatarImage = MemoryImage(base64Decode(_base64Image!));
+      widget.setAvatarThumbnailBytes(base64Decode(_base64Image!));
     } else if (_imageUrl != null) {
       AvatarPage.currentAvatarImage = NetworkImage(_imageUrl!);
+      // 若有需要可考慮下載圖片轉 Uint8List 再 callback
     }
     setState(() {});
     // 通知外部頁面刷新（可用 Provider/InheritWidget 改進）
   }
 
   Future<void> _generateAvatar() async {
-    if (_descController.text.trim().isEmpty) {
+    if (_descController.text.trim().isEmpty &&
+        _selectedGender.isEmpty &&
+        _selectedHair.isEmpty &&
+        _selectedStyle.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('請先輸入描述！')),
+        const SnackBar(content: Text('請先輸入描述或選擇標籤！')),
       );
       return;
     }
