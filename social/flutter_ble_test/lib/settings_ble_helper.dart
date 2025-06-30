@@ -51,4 +51,41 @@ class SettingsBleHelper {
     debugPrint('Start BLE advertise, localName: $nickname');
     await _blePeripheral.start(advertiseData: advertiseData);
   }
+
+  static Future<void> advertiseWithImageId({
+    required String nickname,
+    required String imageId,
+    required bool enable,
+  }) async {
+    if (!enable) {
+      await _blePeripheral.stop();
+      return;
+    }
+    final nicknameBytes = utf8.encode(nickname.isEmpty ? 'Unknown' : nickname);
+    List<int> imageIdBytes = utf8.encode(imageId);
+    int maxTotal = 24;
+    int used = 4 + 1 + nicknameBytes.length + 1;
+    int imageIdLen = imageIdBytes.length;
+    if (used + imageIdLen > maxTotal) {
+      int allowed = maxTotal - used;
+      if (allowed < 0) allowed = 0;
+      if (imageIdBytes.length > allowed) {
+        imageIdBytes = imageIdBytes.sublist(0, allowed);
+      }
+    }
+    final List<int> manufacturerData = [0x42, 0x4C, 0x45, 0x49]; // BLEI
+    manufacturerData.add(nicknameBytes.length);
+    manufacturerData.addAll(nicknameBytes);
+    manufacturerData.add(imageIdBytes.length);
+    manufacturerData.addAll(imageIdBytes);
+    debugPrint('廣播 imageId manufacturerData: \\${manufacturerData.toString()}, 長度: \\${manufacturerData.length}');
+    final advertiseData = AdvertiseData(
+      localName: nickname,
+      manufacturerId: 0x1235,
+      manufacturerData: Uint8List.fromList(manufacturerData),
+      includeDeviceName: true,
+    );
+    debugPrint('Start BLE advertise with imageId, localName: $nickname, imageId: $imageId');
+    await _blePeripheral.start(advertiseData: advertiseData);
+  }
 }

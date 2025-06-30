@@ -10,6 +10,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'main_tab_page.dart';
 import 'settings_ble_helper.dart';
+import 'image_api_service.dart';
 
 class SettingsPage extends StatefulWidget {
   final bool isAdvertising;
@@ -44,6 +45,10 @@ class _SettingsPageState extends State<SettingsPage> {
   final List<Map<String, dynamic>> _commuteRoute = [];
   Timer? _commuteTimer;
   bool _isAdvertising = false;
+
+  ImageApiService _imageApiService = ImageApiService();
+  String? _mockImageId;
+  String? _mockImageUrl;
 
   Future<void> _pickAvatarFromGallery() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
@@ -211,6 +216,21 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _mockUploadAvatar() async {
+    final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    if (image != null) {
+      final file = File(image.path);
+      final imageId = await _imageApiService.uploadImage(file);
+      final imageUrl = _imageApiService.getImageUrl(imageId);
+      setState(() {
+        _mockImageId = imageId;
+        _mockImageUrl = imageUrl;
+      });
+      // 這裡可以將 imageId 用於 BLE 廣播
+      debugPrint('Mock 上傳圖片完成，imageId: $imageId, imageUrl: $imageUrl');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -295,6 +315,40 @@ class _SettingsPageState extends State<SettingsPage> {
                         child: const Text('設定頭貼'),
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    Center(
+                      child: ElevatedButton(
+                        onPressed: _mockUploadAvatar, // 呼叫 mock 上傳
+                        child: const Text('模擬上傳頭貼到 Server'),
+                      ),
+                    ),
+                    Center(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          if (_mockImageId != null) {
+                            await SettingsBleHelper.advertiseWithImageId(
+                              nickname: widget.nicknameController.text,
+                              imageId: _mockImageId!,
+                              enable: true,
+                            );
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('已開始 BLE 廣播 imageId')),
+                            );
+                          }
+                        },
+                        child: const Text('BLE 廣播圖片 imageId'),
+                      ),
+                    ),
+                    if (_mockImageUrl != null)
+                      Center(
+                        child: Column(
+                          children: [
+                            const SizedBox(height: 8),
+                            Text('圖片已上傳，imageId: \\$_mockImageId'),
+                            Image.network(_mockImageUrl!, width: 120, height: 120),
+                          ],
+                        ),
+                      ),
                     const SizedBox(height: 24),
                     const Text('暱稱', style: TextStyle(fontSize: 16)),
                     TextField(
