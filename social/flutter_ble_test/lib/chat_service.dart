@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'websocket_service.dart';
 import 'chat_models.dart';
@@ -77,60 +78,68 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 加入聊天室
-  void joinRoom(String roomId, String roomName) {
+  // 建立房間，伺服器回傳 roomId
+  Future<String?> createRoom(String name) async {
+    final completer = Completer<String?>();
+    void handler(Map<String, dynamic> data) {
+      if (data['type'] == 'room_created') {
+        _webSocketService.removeMessageListener(handler);
+        completer.complete(data['roomId'] as String?);
+      }
+    }
+    _webSocketService.addMessageListener(handler);
+    _webSocketService.sendMessage({
+      'type': 'create_room',
+      'name': name,
+    });
+    return completer.future;
+  }
+
+  // 加入房間，伺服器回傳 joined_room
+  Future<bool> joinRoom(String roomId) async {
+    final completer = Completer<bool>();
+    void handler(Map<String, dynamic> data) {
+      if (data['type'] == 'joined_room' && data['roomId'] == roomId) {
+        _webSocketService.removeMessageListener(handler);
+        completer.complete(true);
+      }
+    }
+    _webSocketService.addMessageListener(handler);
     _webSocketService.sendMessage({
       'type': 'join_room',
       'roomId': roomId,
-      'roomName': roomName,
-      'user': _currentUser,
     });
+    return completer.future;
   }
 
-  // 創建聊天室
-  void createRoom(String roomName, List<String> participants) {
-    final roomId = _generateRoomId();
+  // 離開房間，伺服器回傳 left_room
+  Future<bool> leaveRoom(String roomId) async {
+    final completer = Completer<bool>();
+    void handler(Map<String, dynamic> data) {
+      if (data['type'] == 'left_room' && data['roomId'] == roomId) {
+        _webSocketService.removeMessageListener(handler);
+        completer.complete(true);
+      }
+    }
+    _webSocketService.addMessageListener(handler);
     _webSocketService.sendMessage({
-      'type': 'create_room',
+      'type': 'leave_room',
       'roomId': roomId,
-      'roomName': roomName,
-      'participants': participants,
-      'user': _currentUser,
     });
+    return completer.future;
   }
 
-  // 發送文字訊息
-  void sendTextMessage(String content) {
-    if (_currentRoom == null || content.trim().isEmpty) return;
-    
+  // 傳送聊天訊息
+  void sendTextMessage(String roomId, String sender, String content, {String? imageUrl}) {
     final message = {
       'type': 'message',
       'id': _generateMessageId(),
-      'sender': _currentUser,
+      'sender': sender,
+      'roomId': roomId,
       'content': content,
-      'timestamp': DateTime.now().toIso8601String(),
-      'roomId': _currentRoom!.id,
-      'messageType': 'text',
-    };
-    
-    _webSocketService.sendMessage(message);
-  }
-
-  // 發送圖片訊息
-  void sendImageMessage(String imageUrl) {
-    if (_currentRoom == null) return;
-    
-    final message = {
-      'type': 'message',
-      'id': _generateMessageId(),
-      'sender': _currentUser,
-      'content': '',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
       'imageUrl': imageUrl,
-      'timestamp': DateTime.now().toIso8601String(),
-      'roomId': _currentRoom!.id,
-      'messageType': 'image',
     };
-    
     _webSocketService.sendMessage(message);
   }
 
@@ -157,11 +166,6 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 生成房間 ID
-  String _generateRoomId() {
-    final random = Random();
-    return 'room_${DateTime.now().millisecondsSinceEpoch}_${random.nextInt(1000)}';
-  }
 
   // 生成訊息 ID
   String _generateMessageId() {

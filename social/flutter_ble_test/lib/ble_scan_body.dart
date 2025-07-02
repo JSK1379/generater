@@ -87,8 +87,42 @@ class _BleScanBodyState extends State<BleScanBody> {
     final scanResult = _scanResults.firstWhere((result) => result.device.remoteId == device.remoteId);
     final connectionInfo = _extractDeviceInfo(scanResult);
 
+    // 顯示提示窗，詢問用戶是否要連接
+    final shouldConnect = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('是否要連接對方？'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('暱稱: ${connectionInfo['nickname']}'),
+            Text('裝置ID: ${connectionInfo['deviceId']}'),
+            Text('信號強度: ${connectionInfo['rssi']}'),
+            if (connectionInfo['imageId']!.isNotEmpty)
+              Text('圖片ID: ${connectionInfo['imageId']}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('連接'),
+          ),
+        ],
+      ),
+    );
+    if (shouldConnect != true) {
+      // 用戶取消連接
+      return;
+    }
+
     if (!mounted) return;
-    // 直接連接並開啟聊天室（不需要提示窗，提示窗應該在被連接端顯示）
+    // 用戶確認要連接，開啟聊天室
     final chatService = ChatService();
     final currentUserId = await chatService.getCurrentUserId();
     final otherUserId = connectionInfo['deviceId']!; // 使用對方的裝置 ID 作為用戶 ID
@@ -98,22 +132,29 @@ class _BleScanBodyState extends State<BleScanBody> {
     await _saveChatRoomHistory(roomId, '與 ${connectionInfo['nickname']} 的聊天', otherUserId);
 
     if (!mounted) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ChatPage(
-          roomId: roomId,
-          roomName: '與 ${connectionInfo['nickname']} 的聊天',
-          currentUser: currentUserId,
-          chatService: chatService,
+    try {
+      await device.connect();
+      if (!mounted) return;
+      setState(() => _connectedDevice = device);
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ChatPage(
+            roomId: roomId,
+            roomName: '與 ${connectionInfo['nickname']} 的聊天',
+            currentUser: currentUserId,
+            chatService: chatService,
+          ),
         ),
-      ),
-    );
-
-    await device.connect();
-    setState(() => _connectedDevice = device);
-    _services = await device.discoverServices();
-    setState(() {});
+      );
+    } catch (e) {
+      // 連接失敗，不顯示聊天室
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('連接失敗：${e.toString()}')),
+      );
+    }
   }
   
   Map<String, String> _extractDeviceInfo(ScanResult scanResult) {

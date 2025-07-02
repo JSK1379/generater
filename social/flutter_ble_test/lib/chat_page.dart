@@ -34,7 +34,7 @@ class _ChatPageState extends State<ChatPage> {
       _connectToWebSocket();
     } else {
       // 已連線則直接加入房間
-      widget.chatService.joinRoom(widget.roomId, widget.roomName);
+      widget.chatService.joinRoom(widget.roomId);
     }
     
     // 監聽訊息變化，自動捲動到底部
@@ -48,7 +48,7 @@ class _ChatPageState extends State<ChatPage> {
       widget.currentUser,
     );
     if (success) {
-      widget.chatService.joinRoom(widget.roomId, widget.roomName);
+      widget.chatService.joinRoom(widget.roomId);
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -71,7 +71,11 @@ class _ChatPageState extends State<ChatPage> {
   void _sendMessage() {
     final text = _messageController.text.trim();
     if (text.isNotEmpty) {
-      widget.chatService.sendTextMessage(text);
+      widget.chatService.sendTextMessage(
+        widget.roomId,
+        widget.currentUser,
+        text,
+      );
       _messageController.clear();
     }
   }
