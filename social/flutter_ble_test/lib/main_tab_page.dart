@@ -14,7 +14,7 @@ class MainTabPage extends StatefulWidget {
 
 class MainTabPageState extends State<MainTabPage> {
   int currentIndex = 0;
-  final bool _isAdvertising = false;
+  bool _isAdvertising = false;
   final TextEditingController _nicknameController = TextEditingController();
   Uint8List? _avatarThumbnailBytes;
   bool _hasChatHistory = false;
@@ -64,7 +64,11 @@ class MainTabPageState extends State<MainTabPage> {
     if (_hasChatHistory) const ChatRoomListPage(),
     SettingsPage(
       isAdvertising: _isAdvertising,
-      onToggleAdvertise: (v) async { return; }, // 由 SettingsPage 處理
+      onToggleAdvertise: (v) async {
+        setState(() {
+          _isAdvertising = v;
+        });
+      },
       nicknameController: _nicknameController,
       setAvatarThumbnailBytes: _setAvatarThumbnailBytes,
       avatarThumbnailBytes: _avatarThumbnailBytes,

@@ -46,7 +46,6 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _isTrackingCommute = false;
   final List<Map<String, dynamic>> _commuteRoute = [];
   Timer? _commuteTimer;
-  bool _isAdvertising = false;
 
   final ImageApiService _imageApiService = ImageApiService();
   String? _mockImageUrl;
@@ -310,12 +309,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _toggleAdvertise(bool value) async {
-    setState(() => _isAdvertising = value);
-    await SettingsBleHelper.advertiseWithAvatar(
-      nickname: widget.nicknameController.text,
-      avatarImageProvider: _avatarImageProvider,
-      enable: value,
-    );
+    await widget.onToggleAdvertise(value);
   }
 
   Future<void> _loadUserId() async {
@@ -448,7 +442,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       children: [
                         const Text('開啟被偵測 (BLE 廣播)', style: TextStyle(fontSize: 16)),
                         Switch(
-                          value: _isAdvertising,
+                          value: widget.isAdvertising,
                           onChanged: _toggleAdvertise,
                         ),
                       ],
