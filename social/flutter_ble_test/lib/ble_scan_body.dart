@@ -20,6 +20,7 @@ class _BleScanBodyState extends State<BleScanBody> {
   BluetoothDevice? _connectedDevice;
   List<BluetoothService> _services = [];
   final Set<int> _expandedIndexes = {};
+  final Set<String> _promptedNicknames = {}; // 已彈窗過的暱稱
 
   @override
   void initState() {
@@ -34,8 +35,33 @@ class _BleScanBodyState extends State<BleScanBody> {
         });
       });
       FlutterBluePlus.onScanResults.listen((r) {
-        // 移除 debug print 來減少重複的日誌輸出
-        setState(() => _scanResults = r);
+        final Map<String, ScanResult> uniqueDevices = {};
+        for (final existing in _scanResults) {
+          final deviceInfo = _extractDeviceInfo(existing);
+          final nickname = deviceInfo['nickname'] ?? '';
+          if (nickname.isNotEmpty && nickname != '未知裝置') {
+            uniqueDevices[nickname] = existing;
+          }
+        }
+        for (final result in r) {
+          final deviceInfo = _extractDeviceInfo(result);
+          final nickname = deviceInfo['nickname'] ?? '';
+          final mdata = result.advertisementData.manufacturerData;
+          final isSameApp = mdata.containsKey(0x1234) &&
+            mdata[0x1234]!.length >= 4 &&
+            mdata[0x1234]![0] == 0x42 && mdata[0x1234]![1] == 0x4C && mdata[0x1234]![2] == 0x45 && mdata[0x1234]![3] == 0x41;
+          if (nickname.isNotEmpty && nickname != '未知裝置') {
+            if (!uniqueDevices.containsKey(nickname) || result.rssi > uniqueDevices[nickname]!.rssi) {
+              uniqueDevices[nickname] = result;
+            }
+            // 自動彈窗：只對同 app 廣播且未彈窗過的暱稱
+            if (isSameApp && !_promptedNicknames.contains(nickname)) {
+              _promptedNicknames.add(nickname);
+              Future.microtask(() => _showAutoConnectDialog(result));
+            }
+          }
+        }
+        setState(() => _scanResults = uniqueDevices.values.toList());
       });
     });
   }
@@ -256,6 +282,42 @@ class _BleScanBodyState extends State<BleScanBody> {
       };
       historyJson.add(jsonEncode(newHistory));
       await prefs.setStringList('chat_history', historyJson);
+    }
+  }
+
+  Future<void> _showAutoConnectDialog(ScanResult result) async {
+    final info = _extractDeviceInfo(result);
+    if (!mounted) return;
+    final shouldConnect = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('偵測到新用戶'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('暱稱: ${info['nickname']}'),
+            Text('裝置ID: ${info['deviceId']}'),
+            Text('信號強度: ${info['rssi']}'),
+            if (info['imageId']!.isNotEmpty)
+              Text('圖片ID: ${info['imageId']}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('忽略'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('連接'),
+          ),
+        ],
+      ),
+    );
+    if (shouldConnect == true) {
+      await _connect(result.device);
     }
   }
 
