@@ -98,7 +98,8 @@ class _BleScanBodyState extends State<BleScanBody> {
     final currentUserId = await chatService.getCurrentUserId();
     final otherUserId = connectionInfo['deviceId']!; // 使用對方的裝置 ID 作為用戶 ID
     final roomId = chatService.generateRoomId(currentUserId, otherUserId);
-    
+
+    if (!mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(

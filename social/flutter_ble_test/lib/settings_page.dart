@@ -155,31 +155,33 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
     );
 
-    if (!mounted) return;      if (result == true) {
-        // 用戶接受連接，開啟聊天室
-        final chatService = ChatService();
-        final currentUserId = await chatService.getCurrentUserId();
-        final roomId = chatService.generateRoomId(currentUserId, deviceId);
-        
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ChatPage(
-              roomId: roomId,
-              roomName: '與 $nickname 的聊天',
-              currentUser: currentUserId,
-              chatService: chatService,
-            ),
+    if (!mounted) return;
+    if (result == true) {
+      // 用戶接受連接，開啟聊天室
+      final chatService = ChatService();
+      final currentUserId = await chatService.getCurrentUserId();
+      final roomId = chatService.generateRoomId(currentUserId, deviceId);
+
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ChatPage(
+            roomId: roomId,
+            roomName: '與 $nickname 的聊天',
+            currentUser: currentUserId,
+            chatService: chatService,
           ),
-        );
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已接受 $nickname 的連接請求')),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已拒絕連接請求')),
-        );
-      }
+        ),
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已接受 $nickname 的連接請求')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已拒絕連接請求')),
+      );
+    }
   }
 
   @override
