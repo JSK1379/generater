@@ -173,7 +173,7 @@ class ChatService extends ChangeNotifier {
       'from': fromUserId,
       'to': toUserId,
     });
-    debugPrint('[ChatService] Sent connect_request from: ' + fromUserId + ' to: ' + toUserId);
+    debugPrint('[ChatService] Sent connect_request from: $fromUserId to: $toUserId');
   }
 
   // 生成訊息 ID
