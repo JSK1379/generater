@@ -105,7 +105,75 @@ class _ChatRoomListPageState extends State<ChatRoomListPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('聊天室')),
+      appBar: AppBar(
+        title: const Text('聊天室'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit),
+            tooltip: '編輯聊天室',
+            onPressed: () async {
+              // 彈出多選對話框
+              final selected = await showDialog<List<String>>(
+                context: context,
+                builder: (context) {
+                  final selectedRoomIds = <String>{};
+                  return AlertDialog(
+                    title: const Text('隱藏聊天室'),
+                    content: SizedBox(
+                      width: double.maxFinite,
+                      child: StatefulBuilder(
+                        builder: (context, setState) {
+                          return ListView(
+                            shrinkWrap: true,
+                            children: _chatHistory.map((history) {
+                              return CheckboxListTile(
+                                value: selectedRoomIds.contains(history.roomId),
+                                title: Text(history.roomName),
+                                onChanged: (v) {
+                                  setState(() {
+                                    if (v == true) {
+                                      selectedRoomIds.add(history.roomId);
+                                    } else {
+                                      selectedRoomIds.remove(history.roomId);
+                                    }
+                                  });
+                                },
+                              );
+                            }).toList(),
+                          );
+                        },
+                      ),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, null),
+                        child: const Text('取消'),
+                      ),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(context, selectedRoomIds.toList()),
+                        child: const Text('隱藏'),
+                      ),
+                    ],
+                  );
+                },
+              );
+              if (selected != null && selected.isNotEmpty) {
+                // 呼叫伺服器刪除聊天室
+                for (final roomId in selected) {
+                  ChatService().deleteRoom(roomId);
+                }
+                // 用戶端隱藏聊天室
+                setState(() {
+                  _chatHistory.removeWhere((h) => selected.contains(h.roomId));
+                });
+                // 更新本地儲存
+                final prefs = await SharedPreferences.getInstance();
+                prefs.setStringList('chat_history', _chatHistory.map((h) => jsonEncode(h.toJson())).toList());
+              }
+            },
+          ),
+        ],
+      ),
       body: ListView.builder(
         itemCount: _chatHistory.length,
         itemBuilder: (context, index) {

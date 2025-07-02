@@ -63,6 +63,8 @@ class MainTabPageState extends State<MainTabPage> {
       avatarThumbnailBytes: _avatarThumbnailBytes,
     ),
     if (_hasChatHistory) const ChatRoomListPage(),
+    // 新增測試分頁
+    const _TestTab(),
     SettingsPage(
       isAdvertising: _isAdvertising,
       onToggleAdvertise: (v) async {
@@ -91,6 +93,7 @@ class MainTabPageState extends State<MainTabPage> {
     const BottomNavigationBarItem(icon: Icon(Icons.face), label: 'Avatar'),
     if (_hasChatHistory)
       const BottomNavigationBarItem(icon: Icon(Icons.chat), label: '聊天室'),
+    const BottomNavigationBarItem(icon: Icon(Icons.science), label: '測試'),
     const BottomNavigationBarItem(icon: Icon(Icons.settings), label: '設置'),
   ];
 
@@ -103,6 +106,36 @@ class MainTabPageState extends State<MainTabPage> {
         currentIndex: currentIndex,
         items: _items,
         onTap: (i) => setState(() => currentIndex = i),
+      ),
+    );
+  }
+}
+
+class _TestTab extends StatelessWidget {
+  const _TestTab();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          ElevatedButton(
+            onPressed: () {
+              // 連接請求邏輯可在此實作
+              debugPrint('創建連接要求');
+            },
+            child: const Text('創建連接要求'),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: () {
+              // 聊天室建立邏輯可在此實作
+              debugPrint('創建聊天室');
+            },
+            child: const Text('創建聊天室'),
+          ),
+        ],
       ),
     );
   }

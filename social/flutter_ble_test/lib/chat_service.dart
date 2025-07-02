@@ -176,6 +176,16 @@ class ChatService extends ChangeNotifier {
     debugPrint('[ChatService] Sent connect_request from: $fromUserId to: $toUserId');
   }
 
+  // 刪除聊天室
+  void deleteRoom(String roomId) {
+    _webSocketService.sendMessage({
+      'type': 'delete_room',
+      'roomId': roomId,
+      'user': _currentUser,
+    });
+    debugPrint('[ChatService] Sent delete_room for: $roomId');
+  }
+
   // 生成訊息 ID
   String _generateMessageId() {
     final random = Random();
