@@ -6,6 +6,7 @@ import 'chat_room_list_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:typed_data';
 import 'settings_ble_helper.dart';
+import '_test_tab.dart';
 
 class MainTabPage extends StatefulWidget {
   const MainTabPage({super.key});
@@ -64,7 +65,7 @@ class MainTabPageState extends State<MainTabPage> {
     ),
     if (_hasChatHistory) const ChatRoomListPage(),
     // 新增測試分頁
-    const _TestTab(),
+    const TestTab(),
     SettingsPage(
       isAdvertising: _isAdvertising,
       onToggleAdvertise: (v) async {
@@ -73,7 +74,6 @@ class MainTabPageState extends State<MainTabPage> {
         });
         // 呼叫 BLE 廣播
         final nickname = _nicknameController.text;
-        // 這裡可根據你的需求選擇 avatar 或 imageId 廣播
         await SettingsBleHelper.advertiseWithAvatar(
           nickname: nickname,
           avatarImageProvider: _avatarThumbnailBytes != null ? MemoryImage(_avatarThumbnailBytes!) : null,
@@ -111,32 +111,4 @@ class MainTabPageState extends State<MainTabPage> {
   }
 }
 
-class _TestTab extends StatelessWidget {
-  const _TestTab();
 
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          ElevatedButton(
-            onPressed: () {
-              // 連接請求邏輯可在此實作
-              debugPrint('創建連接要求');
-            },
-            child: const Text('創建連接要求'),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () {
-              // 聊天室建立邏輯可在此實作
-              debugPrint('創建聊天室');
-            },
-            child: const Text('創建聊天室'),
-          ),
-        ],
-      ),
-    );
-  }
-}

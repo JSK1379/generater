@@ -31,8 +31,8 @@ class ChatService extends ChangeNotifier {
   }
 
   // 連接聊天室
-  Future<bool> connect(String baseUrl, String roomId, String userId) async {
-    final wsUrl = '$baseUrl/ws/chat/$roomId/$userId';
+  Future<bool> connect(String wsUrl, String roomId, String userId) async {
+    // 直接使用傳入的 wsUrl，不再拼接任何內容
     return await _webSocketService.connect(wsUrl);
   }
 
