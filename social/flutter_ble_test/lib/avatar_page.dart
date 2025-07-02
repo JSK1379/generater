@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'user_api_service.dart';
 
 class AvatarPage extends StatefulWidget {
   const AvatarPage({
@@ -33,10 +35,19 @@ class _AvatarPageState extends State<AvatarPage> {
   String _selectedBody = '';
 
   // 新增：套用頭像
-  void _applyAvatar() {
+  void _applyAvatar() async {
     if (_base64Image != null) {
       AvatarPage.currentAvatarImage = MemoryImage(base64Decode(_base64Image!));
       widget.setAvatarThumbnailBytes(base64Decode(_base64Image!));
+      // 新增：上傳 avatar 給 server
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getString('user_id');
+      if (userId != null && userId.isNotEmpty) {
+        const wsUrl = 'wss://near-ride-backend-api.onrender.com/ws';
+        final userApi = UserApiService(wsUrl);
+        await userApi.uploadAvatar(userId, _base64Image!);
+        userApi.dispose();
+      }
     } else if (_imageUrl != null) {
       AvatarPage.currentAvatarImage = NetworkImage(_imageUrl!);
       // 若有需要可考慮下載圖片轉 Uint8List 再 callback

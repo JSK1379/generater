@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math';
+import 'user_api_service.dart';
 
 class UserIdSetupPage extends StatefulWidget {
   const UserIdSetupPage({super.key});
@@ -53,7 +54,13 @@ class _UserIdSetupPageState extends State<UserIdSetupPage> {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('user_id', userId);
-    
+
+    // 上傳 userId 給 server
+    const wsUrl = 'wss://near-ride-backend-api.onrender.com/ws';
+    final userApi = UserApiService(wsUrl);
+    await userApi.uploadUserId(userId);
+    userApi.dispose();
+
     if (mounted) {
       Navigator.of(context).pushReplacementNamed('/main');
     }
