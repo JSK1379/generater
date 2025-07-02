@@ -3,6 +3,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:async';
 import 'chat_service.dart';
 import 'chat_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,50 +21,37 @@ class _BleScanBodyState extends State<BleScanBody> {
   BluetoothDevice? _connectedDevice;
   List<BluetoothService> _services = [];
   final Set<int> _expandedIndexes = {};
-  final Set<String> _promptedNicknames = {}; // 已彈窗過的暱稱
+
+  StreamSubscription<BluetoothAdapterState>? _adapterStateSubscription;
+  StreamSubscription<List<ScanResult>>? _scanResultsSubscription;
 
   @override
   void initState() {
     super.initState();
     _requestPermissions().then((_) {
-      FlutterBluePlus.adapterState.listen((s) {
-        setState(() {
-          _btState = s;
-          if (s != BluetoothAdapterState.on) {
-            _scanResults = [];
-          }
-        });
+      _adapterStateSubscription = FlutterBluePlus.adapterState.listen((s) {
+        if (mounted) {
+          setState(() {
+            _btState = s;
+            if (s != BluetoothAdapterState.on) {
+              _scanResults = [];
+            }
+          });
+        }
       });
       FlutterBluePlus.onScanResults.listen((r) {
-        final Map<String, ScanResult> uniqueDevices = {};
-        for (final existing in _scanResults) {
-          final deviceInfo = _extractDeviceInfo(existing);
-          final nickname = deviceInfo['nickname'] ?? '';
-          if (nickname.isNotEmpty && nickname != '未知裝置') {
-            uniqueDevices[nickname] = existing;
-          }
-        }
-        for (final result in r) {
-          final deviceInfo = _extractDeviceInfo(result);
-          final nickname = deviceInfo['nickname'] ?? '';
-          final mdata = result.advertisementData.manufacturerData;
-          final isSameApp = mdata.containsKey(0x1234) &&
-            mdata[0x1234]!.length >= 4 &&
-            mdata[0x1234]![0] == 0x42 && mdata[0x1234]![1] == 0x4C && mdata[0x1234]![2] == 0x45 && mdata[0x1234]![3] == 0x41;
-          if (nickname.isNotEmpty && nickname != '未知裝置') {
-            if (!uniqueDevices.containsKey(nickname) || result.rssi > uniqueDevices[nickname]!.rssi) {
-              uniqueDevices[nickname] = result;
-            }
-            // 自動彈窗：只對同 app 廣播且未彈窗過的暱稱
-            if (isSameApp && !_promptedNicknames.contains(nickname)) {
-              _promptedNicknames.add(nickname);
-              Future.microtask(() => _showAutoConnectDialog(result));
-            }
-          }
-        }
-        setState(() => _scanResults = uniqueDevices.values.toList());
+        // 移除 debug print 來減少重複的日誌輸出
+        setState(() => _scanResults = r);
       });
     });
+  }
+
+  @override
+  void dispose() {
+    _adapterStateSubscription?.cancel();
+    _scanResultsSubscription?.cancel();
+    _connectedDevice?.disconnect();
+    super.dispose();
   }
 
   Future<void> _requestPermissions() async {
@@ -89,7 +77,9 @@ class _BleScanBodyState extends State<BleScanBody> {
   }
 
   Future<void> _startScan() async {
-    setState(() => _isScanning = true);
+    if (mounted) {
+      setState(() => _isScanning = true);
+    }
     await FlutterBluePlus.startScan();
     Future.delayed(const Duration(seconds: 1), () async {
       if (mounted && _isScanning) {
@@ -100,7 +90,9 @@ class _BleScanBodyState extends State<BleScanBody> {
 
   Future<void> _stopScan() async {
     await FlutterBluePlus.stopScan();
-    setState(() => _isScanning = false);
+    if (mounted) {
+      setState(() => _isScanning = false);
+    }
   }
 
   Future<void> _connect(BluetoothDevice device) async {
@@ -157,6 +149,10 @@ class _BleScanBodyState extends State<BleScanBody> {
       await device.connect();
       if (!mounted) return;
       setState(() => _connectedDevice = device);
+      _services = await device.discoverServices();
+      if (mounted) {
+        setState(() {});
+      }
       if (!mounted) return;
       Navigator.push(
         context,
@@ -218,10 +214,12 @@ class _BleScanBodyState extends State<BleScanBody> {
   
   Future<void> _disconnect() async {
     await _connectedDevice?.disconnect();
-    setState(() {
-      _connectedDevice = null;
-      _services = [];
-    });
+    if (mounted) {
+      setState(() {
+        _connectedDevice = null;
+        _services = [];
+      });
+    }
   }
 
   Future<void> _readCharacteristic(BluetoothCharacteristic c) async {
@@ -282,42 +280,6 @@ class _BleScanBodyState extends State<BleScanBody> {
       };
       historyJson.add(jsonEncode(newHistory));
       await prefs.setStringList('chat_history', historyJson);
-    }
-  }
-
-  Future<void> _showAutoConnectDialog(ScanResult result) async {
-    final info = _extractDeviceInfo(result);
-    if (!mounted) return;
-    final shouldConnect = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('偵測到新用戶'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('暱稱: ${info['nickname']}'),
-            Text('裝置ID: ${info['deviceId']}'),
-            Text('信號強度: ${info['rssi']}'),
-            if (info['imageId']!.isNotEmpty)
-              Text('圖片ID: ${info['imageId']}'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('忽略'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('連接'),
-          ),
-        ],
-      ),
-    );
-    if (shouldConnect == true) {
-      await _connect(result.device);
     }
   }
 
@@ -420,13 +382,15 @@ class _BleScanBodyState extends State<BleScanBody> {
                     child: InkWell(
                       borderRadius: BorderRadius.circular(8),
                       onTap: () {
-                        setState(() {
-                          if (isExpanded) {
-                            _expandedIndexes.remove(i);
-                          } else {
-                            _expandedIndexes.add(i);
-                          }
-                        });
+                        if (mounted) {
+                          setState(() {
+                            if (isExpanded) {
+                              _expandedIndexes.remove(i);
+                            } else {
+                              _expandedIndexes.add(i);
+                            }
+                          });
+                        }
                       },
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
