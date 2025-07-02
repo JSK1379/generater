@@ -86,86 +86,89 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.roomName),
-        actions: [
-          AnimatedBuilder(
-            animation: widget.chatService,
-            builder: (context, child) {
-              return Icon(
-                widget.chatService.isConnected ? Icons.wifi : Icons.wifi_off,
-                color: widget.chatService.isConnected ? Colors.green : Colors.red,
-              );
-            },
-          ),
-          const SizedBox(width: 16),
-        ],
-      ),
-      body: Column(
-        children: [
-          // 訊息列表
-          Expanded(
-            child: AnimatedBuilder(
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(widget.roomName),
+          actions: [
+            AnimatedBuilder(
               animation: widget.chatService,
               builder: (context, child) {
-                if (widget.chatService.messages.isEmpty) {
-                  return const Center(
-                    child: Text('目前沒有訊息，開始聊天吧！'),
-                  );
-                }
-                
-                return ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(8.0),
-                  itemCount: widget.chatService.messages.length,
-                  itemBuilder: (context, index) {
-                    final message = widget.chatService.messages[index];
-                    final isMe = message.sender == widget.currentUser;
-                    
-                    return _buildMessageBubble(message, isMe);
-                  },
+                return Icon(
+                  widget.chatService.isConnected ? Icons.wifi : Icons.wifi_off,
+                  color: widget.chatService.isConnected ? Colors.green : Colors.red,
                 );
               },
             ),
-          ),
-          
-          // 輸入框
-          Container(
-            padding: const EdgeInsets.all(8.0),
-            decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              border: Border(
-                top: BorderSide(color: Colors.grey.shade300),
+            const SizedBox(width: 16),
+          ],
+        ),
+        body: Column(
+          children: [
+            // 訊息列表
+            Expanded(
+              child: AnimatedBuilder(
+                animation: widget.chatService,
+                builder: (context, child) {
+                  if (widget.chatService.messages.isEmpty) {
+                    return const Center(
+                      child: Text('目前沒有訊息，開始聊天吧！'),
+                    );
+                  }
+                  
+                  return ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(8.0),
+                    itemCount: widget.chatService.messages.length,
+                    itemBuilder: (context, index) {
+                      final message = widget.chatService.messages[index];
+                      final isMe = message.sender == widget.currentUser;
+                      
+                      return _buildMessageBubble(message, isMe);
+                    },
+                  );
+                },
               ),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    decoration: const InputDecoration(
-                      hintText: '輸入訊息...',
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
+            
+            // 輸入框
+            Container(
+              padding: const EdgeInsets.all(8.0),
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                border: Border(
+                  top: BorderSide(color: Colors.grey.shade300),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _messageController,
+                      decoration: const InputDecoration(
+                        hintText: '輸入訊息...',
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                       ),
+                      onSubmitted: (_) => _sendMessage(),
+                      maxLines: null,
                     ),
-                    onSubmitted: (_) => _sendMessage(),
-                    maxLines: null,
                   ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  onPressed: _sendMessage,
-                  icon: const Icon(Icons.send),
-                  color: Theme.of(context).primaryColor,
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: _sendMessage,
+                    icon: const Icon(Icons.send),
+                    color: Theme.of(context).primaryColor,
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

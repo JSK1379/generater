@@ -72,72 +72,80 @@ class _UserIdSetupPageState extends State<UserIdSetupPage> {
         title: const Text('設定用戶 ID'),
         automaticallyImplyLeading: false,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.person,
-              size: 80,
-              color: Colors.blue,
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              '歡迎使用 BLE 聊天應用',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
+      body: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: IntrinsicHeight(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.person,
+                    size: 80,
+                    color: Colors.blue,
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    '歡迎使用 BLE 聊天應用',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    '請設定您的用戶 ID，這將用於聊天室識別',
+                    style: TextStyle(fontSize: 16),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 32),
+                  TextField(
+                    controller: _userIdController,
+                    decoration: const InputDecoration(
+                      labelText: 'User ID',
+                      border: const OutlineInputBorder(),
+                      hintText: '輸入您的用戶 ID',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '建議使用易記的名稱，如：張三、Mary 等',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _saveUserId,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      child: const Text(
+                        '開始使用',
+                        style: TextStyle(fontSize: 18),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextButton(
+                    onPressed: () async {
+                      final newId = _generateUserId();
+                      setState(() {
+                        _userIdController.text = newId;
+                      });
+                    },
+                    child: const Text('重新生成隨機 ID'),
+                  ),
+                  const Spacer(),
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-            const Text(
-              '請設定您的用戶 ID，這將用於聊天室識別',
-              style: TextStyle(fontSize: 16),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 32),
-            TextField(
-              controller: _userIdController,
-              decoration: const InputDecoration(
-                labelText: 'User ID',
-                border: OutlineInputBorder(),
-                hintText: '輸入您的用戶 ID',
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '建議使用易記的名稱，如：張三、Mary 等',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade600,
-              ),
-            ),
-            const SizedBox(height: 32),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _saveUserId,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-                child: const Text(
-                  '開始使用',
-                  style: TextStyle(fontSize: 18),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextButton(
-              onPressed: () async {
-                final newId = _generateUserId();
-                setState(() {
-                  _userIdController.text = newId;
-                });
-              },
-              child: const Text('重新生成隨機 ID'),
-            ),
-          ],
+          ),
         ),
       ),
     );

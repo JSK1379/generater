@@ -52,6 +52,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final ImageApiService _imageApiService = ImageApiService();
   String? _mockImageId;
   String? _mockImageUrl;
+  String? _userId;
 
   Future<void> _pickAvatarFromGallery() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
@@ -122,6 +123,7 @@ class _SettingsPageState extends State<SettingsPage> {
     SettingsBleHelper.setOnConnectionRequestCallback((nickname, imageId, deviceId) {
       _showIncomingConnectionDialog(nickname, imageId, deviceId);
     });
+    _loadUserId();
   }
   
   Future<void> _showIncomingConnectionDialog(String nickname, String imageId, String deviceId) async {
@@ -331,6 +333,13 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _loadUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _userId = prefs.getString('user_id') ?? '';
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -417,39 +426,11 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    Center(
-                      child: ElevatedButton(
-                        onPressed: _mockUploadAvatar, // 呼叫 mock 上傳
-                        child: const Text('模擬上傳頭貼到 Server'),
-                      ),
-                    ),
-                    Center(
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          if (_mockImageId != null) {
-                            final messenger = ScaffoldMessenger.of(context);
-                            await SettingsBleHelper.advertiseWithImageId(
-                              nickname: widget.nicknameController.text,
-                              imageId: _mockImageId!,
-                              enable: true,
-                            );
-                            if (!mounted) return;
-                            messenger.showSnackBar(
-                              const SnackBar(content: Text('已開始 BLE 廣播 imageId')),
-                            );
-                          }
-                        },
-                        child: const Text('BLE 廣播圖片 imageId'),
-                      ),
-                    ),
-                    if (_mockImageUrl != null)
+                    if (_userId != null && _userId!.isNotEmpty)
                       Center(
-                        child: Column(
-                          children: [
-                            const SizedBox(height: 8),
-                            Text('圖片已上傳，imageId: \\$_mockImageId'),
-                            Image.network(_mockImageUrl!, width: 120, height: 120),
-                          ],
+                        child: Text(
+                          '用戶 ID：$_userId',
+                          style: const TextStyle(fontSize: 14, color: Colors.blueGrey),
                         ),
                       ),
                     const SizedBox(height: 24),
@@ -535,25 +516,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         child: Text('已自動啟動，將於通勤時段結束自動上傳', style: TextStyle(fontSize: 12, color: Colors.blue)),
                       ),
                     const SizedBox(height: 24),
-                    Center(
-                      child: ElevatedButton(
-                        onPressed: _scanNearbyBleDevices,
-                        child: const Text('掃描附近 BLE 裝置'),
-                      ),
-                    ),
-                    Center(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          // 模擬有人要連接你的裝置
-                          SettingsBleHelper.simulateIncomingConnection(
-                            'TestUser', 
-                            'mock_image_id_456', 
-                            'AA:BB:CC:DD:EE:FF'
-                          );
-                        },
-                        child: const Text('模擬收到連接請求'),
-                      ),
-                    ),
+// ...已移除 BLE 測試相關按鈕...
                   ],
                 ),
               ),
