@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'websocket_service.dart';
 import 'chat_models.dart';
 import 'dart:math';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ChatService extends ChangeNotifier {
   final WebSocketService _webSocketService = WebSocketService();
@@ -29,8 +30,9 @@ class ChatService extends ChangeNotifier {
   }
 
   // 連接聊天室
-  Future<bool> connect(String url) async {
-    return await _webSocketService.connect(url);
+  Future<bool> connect(String baseUrl, String roomId, String userId) async {
+    final wsUrl = '$baseUrl/ws/chat/$roomId/$userId';
+    return await _webSocketService.connect(wsUrl);
   }
 
   // 處理接收到的訊息
@@ -165,6 +167,18 @@ class ChatService extends ChangeNotifier {
   String _generateMessageId() {
     final random = Random();
     return 'msg_${DateTime.now().millisecondsSinceEpoch}_${random.nextInt(1000)}';
+  }
+
+  // 生成房間 ID（根據兩個用戶 ID）
+  String generateRoomId(String userId1, String userId2) {
+    final sortedUsers = [userId1, userId2]..sort();
+    return 'room_${sortedUsers[0]}_${sortedUsers[1]}';
+  }
+
+  // 取得當前用戶 ID
+  Future<String> getCurrentUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('user_id') ?? 'unknown_user';
   }
 
   @override

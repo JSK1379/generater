@@ -95,13 +95,17 @@ class _BleScanBodyState extends State<BleScanBody> {
     if (!mounted) return;
     // 用戶確認要連接，開啟聊天室
     final chatService = ChatService();
+    final currentUserId = await chatService.getCurrentUserId();
+    final otherUserId = connectionInfo['deviceId']!; // 使用對方的裝置 ID 作為用戶 ID
+    final roomId = chatService.generateRoomId(currentUserId, otherUserId);
+    
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => ChatPage(
-          roomId: connectionInfo['deviceId']!.replaceAll(':', ''),
+          roomId: roomId,
           roomName: '與 ${connectionInfo['nickname']} 的聊天',
-          currentUser: '我', // 這裡應該從設定中取得當前用戶暱稱
+          currentUser: currentUserId,
           chatService: chatService,
         ),
       ),

@@ -42,7 +42,11 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _connectToWebSocket() async {
-    final success = await widget.chatService.connect('ws://localhost:8080/chat');
+    final success = await widget.chatService.connect(
+      'wss://commute-api.onrender.com',
+      widget.roomId,
+      widget.currentUser,
+    );
     if (success) {
       widget.chatService.joinRoom(widget.roomId, widget.roomName);
     } else {
