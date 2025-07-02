@@ -1,5 +1,7 @@
 import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'dart:async';
 import 'avatar_utils.dart';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -7,11 +9,66 @@ import 'dart:typed_data';
 class SettingsBleHelper {
 
   static void Function(String nickname, String imageId, String deviceId)? _onConnectionRequestCallback;
+  static final FlutterBlePeripheral _blePeripheral = FlutterBlePeripheral();
+  static bool _isListening = false;
 
   /// 註冊收到連接請求時的 callback
   static void setOnConnectionRequestCallback(void Function(String nickname, String imageId, String deviceId) callback) {
     debugPrint('[SettingsBleHelper] setOnConnectionRequestCallback called');
     _onConnectionRequestCallback = callback;
+    _startListeningForConnections();
+  }
+
+  /// 開始監聽 BLE 連接
+  static void _startListeningForConnections() async {
+    if (_isListening) return;
+    _isListening = true;
+    
+    debugPrint('[SettingsBleHelper] Started listening for BLE connections');
+    
+    // 監聽 FlutterBluePlus 的連接狀態變化（主要是我們連接別人）
+    FlutterBluePlus.events.onConnectionStateChanged.listen((event) {
+      debugPrint('[SettingsBleHelper] FlutterBluePlus Connection state changed: ${event.device.remoteId.str} -> ${event.connectionState}');
+    });
+    
+    // 嘗試監聽 FlutterBlePeripheral 的狀態變化（別人連接我們）
+    try {
+      // 檢查是否有可用的事件流
+      debugPrint('[SettingsBleHelper] Attempting to listen for peripheral events...');
+      
+      // 定期檢查連接狀態（暫時解決方案）
+      _startPeriodicConnectionCheck();
+      
+    } catch (e) {
+      debugPrint('[SettingsBleHelper] Failed to set up peripheral event listening: $e');
+    }
+  }
+  
+  /// 定期檢查是否有新的連接（暫時解決方案）
+  static void _startPeriodicConnectionCheck() {
+    debugPrint('[SettingsBleHelper] Starting periodic connection check');
+    Timer.periodic(const Duration(seconds: 2), (timer) {
+      try {
+        // 檢查當前連接的裝置
+        final devices = FlutterBluePlus.connectedDevices;
+        if (devices.isNotEmpty) {
+          debugPrint('[SettingsBleHelper] Found ${devices.length} connected devices');
+          for (final device in devices) {
+            debugPrint('[SettingsBleHelper] Connected device: ${device.remoteId.str}');
+            // 觸發連接請求回調
+            _onConnectionRequestCallback?.call(
+              device.platformName.isNotEmpty ? device.platformName : 'Unknown Device',
+              '',
+              device.remoteId.str
+            );
+          }
+        } else {
+          debugPrint('[SettingsBleHelper] No connected devices found');
+        }
+      } catch (e) {
+        debugPrint('[SettingsBleHelper] Error in periodic check: $e');
+      }
+    });
   }
 
   /// 模擬收到 BLE 連接請求（for UI 測試用）
@@ -20,7 +77,6 @@ class SettingsBleHelper {
     debugPrint('[SettingsBleHelper] _onConnectionRequestCallback is null: ${_onConnectionRequestCallback == null}');
     _onConnectionRequestCallback?.call(nickname, imageId, deviceId);
   }
-  static final FlutterBlePeripheral _blePeripheral = FlutterBlePeripheral();
 
   static Future<void> advertiseWithAvatar({
     required String nickname,

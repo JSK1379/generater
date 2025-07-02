@@ -497,7 +497,19 @@ class _SettingsPageState extends State<SettingsPage> {
                         child: Text('已自動啟動，將於通勤時段結束自動上傳', style: TextStyle(fontSize: 12, color: Colors.blue)),
                       ),
                     const SizedBox(height: 24),
-// ...已移除 BLE 測試相關按鈕...
+                    // 測試 BLE 連接提示窗
+                    if (widget.isAdvertising)
+                      ElevatedButton(
+                        onPressed: () {
+                          // 模擬收到連接請求來測試提示窗
+                          SettingsBleHelper.simulateIncomingConnection(
+                            'Test Device',
+                            'test_image_123',
+                            'AA:BB:CC:DD:EE:FF'
+                          );
+                        },
+                        child: const Text('測試連接提示窗'),
+                      ),
                   ],
                 ),
               ),

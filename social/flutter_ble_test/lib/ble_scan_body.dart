@@ -150,6 +150,9 @@ class _BleScanBodyState extends State<BleScanBody> {
       );
     } catch (e) {
       // 連接失敗，不顯示聊天室
+      try {
+        await device.disconnect();
+      } catch (_) {}
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('連接失敗：${e.toString()}')),
