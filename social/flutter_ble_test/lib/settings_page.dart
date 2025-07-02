@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'main_tab_page.dart';
 import 'settings_ble_helper.dart';
 import 'image_api_service.dart';
+import 'ble_scan_helper.dart';
 
 class SettingsPage extends StatefulWidget {
   final bool isAdvertising;
@@ -114,6 +115,55 @@ class _SettingsPageState extends State<SettingsPage> {
       _loadAvatarFromPrefs();
     }
     _autoCommuteTimer = Timer.periodic(const Duration(minutes: 1), (_) => _autoCheckCommutePeriod());
+    
+    // 設定連接請求回調
+    SettingsBleHelper.setOnConnectionRequestCallback((nickname, imageId, deviceId) {
+      _showIncomingConnectionDialog(nickname, imageId, deviceId);
+    });
+  }
+  
+  Future<void> _showIncomingConnectionDialog(String nickname, String imageId, String deviceId) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('收到連接請求'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('對方暱稱: $nickname'),
+            Text('裝置ID: ${deviceId.substring(0, 8)}...'),
+            if (imageId.isNotEmpty) Text('圖片ID: $imageId'),
+            const SizedBox(height: 16),
+            if (imageId.isNotEmpty && _mockImageUrl != null)
+              Image.network(_imageApiService.getImageUrl(imageId), width: 100, height: 100),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('拒絕'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('接受'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+    if (result == true) {
+      // 用戶接受連接，這裡可以開啟聊天室
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已接受 $nickname 的連接請求')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已拒絕連接請求')),
+      );
+    }
   }
 
   @override
@@ -230,6 +280,37 @@ class _SettingsPageState extends State<SettingsPage> {
       // 這裡可以將 imageId 用於 BLE 廣播
       debugPrint('Mock 上傳圖片完成，imageId: $imageId, imageUrl: $imageUrl');
     }
+  }
+
+  // 掃描附近 BLE 裝置並顯示資訊
+  Future<void> _scanNearbyBleDevices() async {
+    final foundDevices = <BleDeviceInfo>[];
+    final stream = BleScanHelper.scanNearbyDevices();
+    await for (final device in stream) {
+      foundDevices.add(device);
+    }
+    if (foundDevices.isEmpty) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('未發現裝置'),
+          content: const Text('附近沒有可用的 BLE 裝置'),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('確定'))],
+        ),
+      );
+      return;
+    }
+    showDialog(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('發現裝置'),
+        children: foundDevices.map((d) => ListTile(
+          title: Text('暱稱: \\${d.nickname}'),
+          subtitle: Text('imageId: \\${d.imageId}\nRSSI: \\${d.rssi}'),
+          trailing: Text('ID: \\${d.deviceId.substring(0, 6)}...'),
+        )).toList(),
+      ),
+    );
   }
 
   @override
@@ -436,6 +517,25 @@ class _SettingsPageState extends State<SettingsPage> {
                         child: Text('已自動啟動，將於通勤時段結束自動上傳', style: TextStyle(fontSize: 12, color: Colors.blue)),
                       ),
                     const SizedBox(height: 24),
+                    Center(
+                      child: ElevatedButton(
+                        onPressed: _scanNearbyBleDevices,
+                        child: const Text('掃描附近 BLE 裝置'),
+                      ),
+                    ),
+                    Center(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          // 模擬有人要連接你的裝置
+                          SettingsBleHelper.simulateIncomingConnection(
+                            'TestUser', 
+                            'mock_image_id_456', 
+                            'AA:BB:CC:DD:EE:FF'
+                          );
+                        },
+                        child: const Text('模擬收到連接請求'),
+                      ),
+                    ),
                   ],
                 ),
               ),

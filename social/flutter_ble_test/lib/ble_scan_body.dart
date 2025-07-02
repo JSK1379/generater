@@ -80,10 +80,87 @@ class _BleScanBodyState extends State<BleScanBody> {
   }
 
   Future<void> _connect(BluetoothDevice device) async {
+    // 取得連接方的資訊
+    final scanResult = _scanResults.firstWhere((result) => result.device.remoteId == device.remoteId);
+    final connectionInfo = _extractDeviceInfo(scanResult);
+    
+    // 彈出對話框讓用戶決定是否接受連接
+    final shouldConnect = await _showConnectionDialog(connectionInfo);
+    if (!shouldConnect) {
+      return;
+    }
+    
     await device.connect();
     setState(() => _connectedDevice = device);
     _services = await device.discoverServices();
     setState(() {});
+  }
+  
+  Map<String, String> _extractDeviceInfo(ScanResult scanResult) {
+    String nickname = '未知裝置';
+    String imageId = '';
+    
+    final manufacturerData = scanResult.advertisementData.manufacturerData;
+    if (manufacturerData.containsKey(0x1234)) {
+      final bytes = manufacturerData[0x1234]!;
+      if (bytes.length > 5 && bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x41) {
+        final nameLen = bytes[4];
+        if (bytes.length >= 5 + nameLen) {
+          nickname = utf8.decode(bytes.sublist(5, 5 + nameLen));
+        }
+      }
+    }
+    if (manufacturerData.containsKey(0x1235)) {
+      final bytes = manufacturerData[0x1235]!;
+      if (bytes.length > 5 && bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x49) {
+        final nameLen = bytes[4];
+        if (bytes.length >= 6 + nameLen) {
+          final imageIdLen = bytes[5 + nameLen];
+          if (imageIdLen > 0 && bytes.length >= 6 + nameLen + imageIdLen) {
+            imageId = utf8.decode(bytes.sublist(6 + nameLen, 6 + nameLen + imageIdLen));
+          }
+        }
+      }
+    }
+    
+    return {
+      'nickname': nickname,
+      'imageId': imageId,
+      'deviceId': scanResult.device.remoteId.str,
+      'rssi': '${scanResult.rssi} dBm'
+    };
+  }
+  
+  Future<bool> _showConnectionDialog(Map<String, String> deviceInfo) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('收到連接請求'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('暱稱: ${deviceInfo['nickname']}'),
+            Text('裝置ID: ${deviceInfo['deviceId']}'),
+            Text('信號強度: ${deviceInfo['rssi']}'),
+            if (deviceInfo['imageId']!.isNotEmpty)
+              Text('圖片ID: ${deviceInfo['imageId']}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('拒絕'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('接受'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   Future<void> _disconnect() async {
