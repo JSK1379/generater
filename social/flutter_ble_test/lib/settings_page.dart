@@ -46,7 +46,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Timer? _commuteTimer;
   bool _isAdvertising = false;
 
-  ImageApiService _imageApiService = ImageApiService();
+  final ImageApiService _imageApiService = ImageApiService();
   String? _mockImageId;
   String? _mockImageUrl;
 
@@ -58,6 +58,7 @@ class _SettingsPageState extends State<SettingsPage> {
       await File(image.path).copy(avatarFile.path);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('avatar_path', avatarFile.path);
+      if (!mounted) return;
       setState(() {
         _avatarImageProvider = FileImage(avatarFile);
       });
@@ -302,6 +303,7 @@ class _SettingsPageState extends State<SettingsPage> {
                                     onTap: () {
                                       Navigator.pop(ctx);
                                       final mainTab = context.findAncestorStateOfType<MainTabPageState>();
+                                      if (!mounted) return;
                                       if (mainTab != null) {
                                         mainTab.setState(() { mainTab.currentIndex = 1; });
                                       }
@@ -326,12 +328,14 @@ class _SettingsPageState extends State<SettingsPage> {
                       child: ElevatedButton(
                         onPressed: () async {
                           if (_mockImageId != null) {
+                            final messenger = ScaffoldMessenger.of(context);
                             await SettingsBleHelper.advertiseWithImageId(
                               nickname: widget.nicknameController.text,
                               imageId: _mockImageId!,
                               enable: true,
                             );
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            if (!mounted) return;
+                            messenger.showSnackBar(
                               const SnackBar(content: Text('已開始 BLE 廣播 imageId')),
                             );
                           }

@@ -3,7 +3,7 @@ import 'dart:io';
 class ImageApiService {
   // 模擬圖片上傳，回傳一個假圖片ID
   Future<String> uploadImage(File imageFile) async {
-    await Future.delayed(Duration(seconds: 1));
+    await Future.delayed(const Duration(seconds: 1));
     // 假設每次都回傳一個固定ID
     return 'mock_image_id_123';
   }
