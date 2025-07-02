@@ -34,12 +34,7 @@ class _BleScanBodyState extends State<BleScanBody> {
         });
       });
       FlutterBluePlus.onScanResults.listen((r) {
-        for (final result in r) {
-          final name = result.advertisementData.advName;
-          if (name.isNotEmpty) {
-            debugPrint('ScanResult: id=[1m[22m\u001b[1m[22m${result.device.remoteId.str}\u001b[0m, name="$name", rssi=${result.rssi}, manufacturerData=${result.advertisementData.manufacturerData}');
-          }
-        }
+        // 移除 debug print 來減少重複的日誌輸出
         setState(() => _scanResults = r);
       });
     });
