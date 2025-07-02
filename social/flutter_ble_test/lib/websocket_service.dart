@@ -41,7 +41,7 @@ class WebSocketService {
       _reconnectAttempts = 0;
       
       // 通知連線狀態監聽器
-      for (final listener in _connectionListeners) {
+      for (final listener in List<Function(bool)>.from(_connectionListeners)) {
         listener(true);
       }
 
@@ -50,7 +50,7 @@ class WebSocketService {
         (data) {
           try {
             final message = jsonDecode(data) as Map<String, dynamic>;
-            for (final listener in _messageListeners) {
+            for (final listener in List<Function(Map<String, dynamic>)>.from(_messageListeners)) {
               listener(message);
             }
           } catch (e) {
@@ -82,7 +82,7 @@ class WebSocketService {
   // 處理斷線
   void _handleDisconnection() {
     _isConnected = false;
-    for (final listener in _connectionListeners) {
+    for (final listener in List<Function(bool)>.from(_connectionListeners)) {
       listener(false);
     }
     
@@ -117,7 +117,7 @@ class WebSocketService {
     _isConnected = false;
     _currentUrl = null;
     _reconnectAttempts = 0;
-    for (final listener in _connectionListeners) {
+    for (final listener in List<Function(bool)>.from(_connectionListeners)) {
       listener(false);
     }
   }

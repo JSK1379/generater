@@ -36,6 +36,19 @@ class _AvatarPageState extends State<AvatarPage> {
 
   // 新增：套用頭像
   void _applyAvatar() async {
+    // 新增：彈窗確認
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('確認更改頭像'),
+        content: const Text('確定要將目前頭像設為個人頭像並上傳嗎？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('確定')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     if (_base64Image != null) {
       AvatarPage.currentAvatarImage = MemoryImage(base64Decode(_base64Image!));
       widget.setAvatarThumbnailBytes(base64Decode(_base64Image!));

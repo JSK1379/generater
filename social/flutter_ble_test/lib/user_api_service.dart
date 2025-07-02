@@ -9,23 +9,43 @@ class UserApiService {
   UserApiService(this.wsUrl);
 
   Future<void> uploadUserId(String userId) async {
-    _channel ??= WebSocketChannel.connect(Uri.parse(wsUrl));
+    if (_channel == null) {
+      try {
+        _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
+      } catch (e) {
+        return; // 無法連線時直接返回
+      }
+    }
     final msg = jsonEncode({
       'type': 'register_user',
       'user_id': userId,
     });
-    _channel!.sink.add(msg);
+    try {
+      _channel!.sink.add(msg);
+    } catch (e) {
+      // 連線失敗不處理
+    }
     // 不等待回應，單向上傳
   }
 
   Future<void> uploadAvatar(String userId, String base64Image) async {
-    _channel ??= WebSocketChannel.connect(Uri.parse(wsUrl));
+    if (_channel == null) {
+      try {
+        _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
+      } catch (e) {
+        return; // 無法連線時直接返回
+      }
+    }
     final msg = jsonEncode({
       'type': 'update_avatar',
       'user_id': userId,
       'avatar': base64Image,
     });
-    _channel!.sink.add(msg);
+    try {
+      _channel!.sink.add(msg);
+    } catch (e) {
+      // 連線失敗不處理
+    }
     // 不等待回應，單向上傳
   }
 
