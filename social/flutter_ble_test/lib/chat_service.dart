@@ -166,6 +166,15 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
   }
 
+  // 發送連接請求
+  void sendConnectRequest(String fromUserId, String toUserId) {
+    _webSocketService.sendMessage({
+      'type': 'connect_request',
+      'from': fromUserId,
+      'to': toUserId,
+    });
+    debugPrint('[ChatService] Sent connect_request from: ' + fromUserId + ' to: ' + toUserId);
+  }
 
   // 生成訊息 ID
   String _generateMessageId() {

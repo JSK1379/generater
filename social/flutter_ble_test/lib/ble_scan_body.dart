@@ -175,6 +175,13 @@ class _BleScanBodyState extends State<BleScanBody> {
         SnackBar(content: Text('連接失敗：${e.toString()}')),
       );
     }
+
+    // 取得本機 userId
+    final prefs = await SharedPreferences.getInstance();
+    final myUserId = prefs.getString('user_id') ?? 'unknown_user';
+    final toUserId = connectionInfo['userId'] ?? connectionInfo['deviceId'] ?? '';
+    chatService.sendConnectRequest(myUserId, toUserId);
+    debugPrint('[BLE] Sent connect_request from: $myUserId to: $toUserId');
   }
   
   Map<String, String> _extractDeviceInfo(ScanResult scanResult) {
