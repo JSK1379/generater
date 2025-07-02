@@ -3,6 +3,8 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'chat_service.dart';
+import 'chat_page.dart';
 
 class BleScanBody extends StatefulWidget {
   const BleScanBody({super.key});
@@ -83,13 +85,28 @@ class _BleScanBodyState extends State<BleScanBody> {
     // 取得連接方的資訊
     final scanResult = _scanResults.firstWhere((result) => result.device.remoteId == device.remoteId);
     final connectionInfo = _extractDeviceInfo(scanResult);
-    
+
     // 彈出對話框讓用戶決定是否接受連接
     final shouldConnect = await _showConnectionDialog(connectionInfo);
     if (!shouldConnect) {
       return;
     }
-    
+
+    if (!mounted) return;
+    // 用戶確認要連接，開啟聊天室
+    final chatService = ChatService();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatPage(
+          roomId: connectionInfo['deviceId']!.replaceAll(':', ''),
+          roomName: '與 ${connectionInfo['nickname']} 的聊天',
+          currentUser: '我', // 這裡應該從設定中取得當前用戶暱稱
+          chatService: chatService,
+        ),
+      ),
+    );
+
     await device.connect();
     setState(() => _connectedDevice = device);
     _services = await device.discoverServices();

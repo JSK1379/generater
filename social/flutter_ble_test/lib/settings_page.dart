@@ -12,6 +12,8 @@ import 'main_tab_page.dart';
 import 'settings_ble_helper.dart';
 import 'image_api_service.dart';
 import 'ble_scan_helper.dart';
+import 'chat_page.dart';
+import 'chat_service.dart';
 
 class SettingsPage extends StatefulWidget {
   final bool isAdvertising;
@@ -155,7 +157,19 @@ class _SettingsPageState extends State<SettingsPage> {
 
     if (!mounted) return;
     if (result == true) {
-      // 用戶接受連接，這裡可以開啟聊天室
+      // 用戶接受連接，開啟聊天室
+      final chatService = ChatService();
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ChatPage(
+            roomId: deviceId.replaceAll(':', ''),
+            roomName: '與 $nickname 的聊天',
+            currentUser: widget.nicknameController.text,
+            chatService: chatService,
+          ),
+        ),
+      );
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('已接受 $nickname 的連接請求')),
       );
