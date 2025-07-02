@@ -124,6 +124,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
   
   Future<void> _showIncomingConnectionDialog(String nickname, String imageId, String deviceId) async {
+    debugPrint('[SettingsPage] _showIncomingConnectionDialog called: nickname=$nickname, imageId=$imageId, deviceId=$deviceId');
     final result = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -154,6 +155,7 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
     );
 
+    debugPrint('[SettingsPage] Connection dialog result: $result');
     if (!mounted) return;
     if (result == true) {
       // 用戶接受連接，開啟聊天室

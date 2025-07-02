@@ -10,11 +10,14 @@ class SettingsBleHelper {
 
   /// 註冊收到連接請求時的 callback
   static void setOnConnectionRequestCallback(void Function(String nickname, String imageId, String deviceId) callback) {
+    debugPrint('[SettingsBleHelper] setOnConnectionRequestCallback called');
     _onConnectionRequestCallback = callback;
   }
 
   /// 模擬收到 BLE 連接請求（for UI 測試用）
   static void simulateIncomingConnection(String nickname, String imageId, String deviceId) {
+    debugPrint('[SettingsBleHelper] simulateIncomingConnection called: nickname=$nickname, imageId=$imageId, deviceId=$deviceId');
+    debugPrint('[SettingsBleHelper] _onConnectionRequestCallback is null: ${_onConnectionRequestCallback == null}');
     _onConnectionRequestCallback?.call(nickname, imageId, deviceId);
   }
   static final FlutterBlePeripheral _blePeripheral = FlutterBlePeripheral();

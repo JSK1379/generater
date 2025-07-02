@@ -5,6 +5,7 @@ import 'avatar_page.dart';
 import 'chat_room_list_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:typed_data';
+import 'settings_ble_helper.dart';
 
 class MainTabPage extends StatefulWidget {
   const MainTabPage({super.key});
@@ -68,6 +69,15 @@ class MainTabPageState extends State<MainTabPage> {
         setState(() {
           _isAdvertising = v;
         });
+        // 呼叫 BLE 廣播
+        final nickname = _nicknameController.text;
+        // 這裡可根據你的需求選擇 avatar 或 imageId 廣播
+        await SettingsBleHelper.advertiseWithAvatar(
+          nickname: nickname,
+          avatarImageProvider: _avatarThumbnailBytes != null ? MemoryImage(_avatarThumbnailBytes!) : null,
+          enable: v,
+        );
+        debugPrint('[MainTabPage] onToggleAdvertise: $v, nickname: $nickname');
       },
       nicknameController: _nicknameController,
       setAvatarThumbnailBytes: _setAvatarThumbnailBytes,

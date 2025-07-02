@@ -87,14 +87,8 @@ class _BleScanBodyState extends State<BleScanBody> {
     final scanResult = _scanResults.firstWhere((result) => result.device.remoteId == device.remoteId);
     final connectionInfo = _extractDeviceInfo(scanResult);
 
-    // 彈出對話框讓用戶決定是否接受連接
-    final shouldConnect = await _showConnectionDialog(connectionInfo);
-    if (!shouldConnect) {
-      return;
-    }
-
     if (!mounted) return;
-    // 用戶確認要連接，開啟聊天室
+    // 直接連接並開啟聊天室（不需要提示窗，提示窗應該在被連接端顯示）
     final chatService = ChatService();
     final currentUserId = await chatService.getCurrentUserId();
     final otherUserId = connectionInfo['deviceId']!; // 使用對方的裝置 ID 作為用戶 ID
@@ -157,38 +151,6 @@ class _BleScanBodyState extends State<BleScanBody> {
     };
   }
   
-  Future<bool> _showConnectionDialog(Map<String, String> deviceInfo) async {
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) => AlertDialog(
-        title: const Text('收到連接請求'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('暱稱: ${deviceInfo['nickname']}'),
-            Text('裝置ID: ${deviceInfo['deviceId']}'),
-            Text('信號強度: ${deviceInfo['rssi']}'),
-            if (deviceInfo['imageId']!.isNotEmpty)
-              Text('圖片ID: ${deviceInfo['imageId']}'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('拒絕'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('接受'),
-          ),
-        ],
-      ),
-    );
-    return result ?? false;
-  }
-
   Future<void> _disconnect() async {
     await _connectedDevice?.disconnect();
     setState(() {
