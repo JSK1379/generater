@@ -105,7 +105,7 @@ class _UserIdSetupPageState extends State<UserIdSetupPage> {
                     controller: _userIdController,
                     decoration: const InputDecoration(
                       labelText: 'User ID',
-                      border: const OutlineInputBorder(),
+                      border: OutlineInputBorder(),
                       hintText: '輸入您的用戶 ID',
                     ),
                   ),

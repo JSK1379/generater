@@ -11,7 +11,6 @@ import 'package:http/http.dart' as http;
 import 'main_tab_page.dart';
 import 'settings_ble_helper.dart';
 import 'image_api_service.dart';
-import 'ble_scan_helper.dart';
 import 'chat_page.dart';
 import 'chat_service.dart';
 
@@ -50,7 +49,6 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _isAdvertising = false;
 
   final ImageApiService _imageApiService = ImageApiService();
-  String? _mockImageId;
   String? _mockImageUrl;
   String? _userId;
 
@@ -163,7 +161,10 @@ class _SettingsPageState extends State<SettingsPage> {
       final chatService = ChatService();
       final currentUserId = await chatService.getCurrentUserId();
       final roomId = chatService.generateRoomId(currentUserId, deviceId);
-
+      
+      // 儲存聊天室歷史
+      await _saveChatRoomHistory(roomId, '與 $nickname 的聊天', deviceId);
+      
       if (!mounted) return;
       Navigator.push(
         context,
@@ -183,6 +184,36 @@ class _SettingsPageState extends State<SettingsPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('已拒絕連接請求')),
       );
+    }
+  }
+
+  Future<void> _saveChatRoomHistory(String roomId, String roomName, String otherUserId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final historyJson = prefs.getStringList('chat_history') ?? [];
+    
+    // 檢查是否已存在
+    final exists = historyJson.any((jsonStr) {
+      final data = jsonDecode(jsonStr);
+      return data['roomId'] == roomId;
+    });
+    
+    if (!exists) {
+      final newHistory = {
+        'roomId': roomId,
+        'roomName': roomName,
+        'lastMessage': '',
+        'lastMessageTime': DateTime.now().toIso8601String(),
+        'otherUserId': otherUserId,
+      };
+      historyJson.add(jsonEncode(newHistory));
+      await prefs.setStringList('chat_history', historyJson);
+      
+      if (!mounted) return;
+      // 通知主頁面更新聊天室分頁顯示
+      final mainTab = context.findAncestorStateOfType<MainTabPageState>();
+      if (mainTab != null) {
+        mainTab.updateChatHistoryDisplay();
+      }
     }
   }
 
@@ -284,52 +315,6 @@ class _SettingsPageState extends State<SettingsPage> {
       nickname: widget.nicknameController.text,
       avatarImageProvider: _avatarImageProvider,
       enable: value,
-    );
-  }
-
-  Future<void> _mockUploadAvatar() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
-    if (image != null) {
-      final file = File(image.path);
-      final imageId = await _imageApiService.uploadImage(file);
-      final imageUrl = _imageApiService.getImageUrl(imageId);
-      setState(() {
-        _mockImageId = imageId;
-        _mockImageUrl = imageUrl;
-      });
-      // 這裡可以將 imageId 用於 BLE 廣播
-      debugPrint('Mock 上傳圖片完成，imageId: $imageId, imageUrl: $imageUrl');
-    }
-  }
-
-  // 掃描附近 BLE 裝置並顯示資訊
-  Future<void> _scanNearbyBleDevices() async {
-    final foundDevices = <BleDeviceInfo>[];
-    final stream = BleScanHelper.scanNearbyDevices();
-    await for (final device in stream) {
-      foundDevices.add(device);
-    }
-    if (foundDevices.isEmpty) {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('未發現裝置'),
-          content: const Text('附近沒有可用的 BLE 裝置'),
-          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('確定'))],
-        ),
-      );
-      return;
-    }
-    showDialog(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: const Text('發現裝置'),
-        children: foundDevices.map((d) => ListTile(
-          title: Text('暱稱: \\${d.nickname}'),
-          subtitle: Text('imageId: \\${d.imageId}\nRSSI: \\${d.rssi}'),
-          trailing: Text('ID: \\${d.deviceId.substring(0, 6)}...'),
-        )).toList(),
-      ),
     );
   }
 

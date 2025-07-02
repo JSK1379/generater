@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'chat_service.dart';
 import 'chat_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class BleScanBody extends StatefulWidget {
   const BleScanBody({super.key});
@@ -98,6 +99,9 @@ class _BleScanBodyState extends State<BleScanBody> {
     final currentUserId = await chatService.getCurrentUserId();
     final otherUserId = connectionInfo['deviceId']!; // 使用對方的裝置 ID 作為用戶 ID
     final roomId = chatService.generateRoomId(currentUserId, otherUserId);
+
+    // 儲存聊天室歷史
+    await _saveChatRoomHistory(roomId, '與 ${connectionInfo['nickname']} 的聊天', otherUserId);
 
     if (!mounted) return;
     Navigator.push(
@@ -229,6 +233,29 @@ class _BleScanBodyState extends State<BleScanBody> {
       }
     }
     return const CircleAvatar(radius: 20, child: Icon(Icons.person));
+  }
+
+  Future<void> _saveChatRoomHistory(String roomId, String roomName, String otherUserId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final historyJson = prefs.getStringList('chat_history') ?? [];
+    
+    // 檢查是否已存在
+    final exists = historyJson.any((jsonStr) {
+      final data = jsonDecode(jsonStr);
+      return data['roomId'] == roomId;
+    });
+    
+    if (!exists) {
+      final newHistory = {
+        'roomId': roomId,
+        'roomName': roomName,
+        'lastMessage': '',
+        'lastMessageTime': DateTime.now().toIso8601String(),
+        'otherUserId': otherUserId,
+      };
+      historyJson.add(jsonEncode(newHistory));
+      await prefs.setStringList('chat_history', historyJson);
+    }
   }
 
   @override

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'ble_scan_body.dart';
 import 'settings_page.dart';
 import 'avatar_page.dart';
+import 'chat_room_list_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:typed_data';
 
@@ -16,11 +17,13 @@ class MainTabPageState extends State<MainTabPage> {
   final bool _isAdvertising = false;
   final TextEditingController _nicknameController = TextEditingController();
   Uint8List? _avatarThumbnailBytes;
+  bool _hasChatHistory = false;
 
   @override
   void initState() {
     super.initState();
     _loadNicknameFromPrefs();
+    _checkChatHistory();
   }
 
   Future<void> _loadNicknameFromPrefs() async {
@@ -40,12 +43,25 @@ class MainTabPageState extends State<MainTabPage> {
     });
   }
 
+  Future<void> _checkChatHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final history = prefs.getStringList('chat_history') ?? [];
+    setState(() {
+      _hasChatHistory = history.isNotEmpty;
+    });
+  }
+
+  void updateChatHistoryDisplay() {
+    _checkChatHistory();
+  }
+
   List<Widget> get _pages => [
     const BleScanBody(),
     AvatarPage(
       setAvatarThumbnailBytes: _setAvatarThumbnailBytes,
       avatarThumbnailBytes: _avatarThumbnailBytes,
     ),
+    if (_hasChatHistory) const ChatRoomListPage(),
     SettingsPage(
       isAdvertising: _isAdvertising,
       onToggleAdvertise: (v) async { return; }, // 由 SettingsPage 處理
@@ -56,10 +72,12 @@ class MainTabPageState extends State<MainTabPage> {
     ),
   ];
 
-  final List<BottomNavigationBarItem> _items = const [
-    BottomNavigationBarItem(icon: Icon(Icons.bluetooth), label: '藍牙'),
-    BottomNavigationBarItem(icon: Icon(Icons.face), label: 'Avatar'),
-    BottomNavigationBarItem(icon: Icon(Icons.settings), label: '設置'),
+  List<BottomNavigationBarItem> get _items => [
+    const BottomNavigationBarItem(icon: Icon(Icons.bluetooth), label: '藍牙'),
+    const BottomNavigationBarItem(icon: Icon(Icons.face), label: 'Avatar'),
+    if (_hasChatHistory)
+      const BottomNavigationBarItem(icon: Icon(Icons.chat), label: '聊天室'),
+    const BottomNavigationBarItem(icon: Icon(Icons.settings), label: '設置'),
   ];
 
   @override
@@ -67,6 +85,7 @@ class MainTabPageState extends State<MainTabPage> {
     return Scaffold(
       body: _pages[currentIndex],
       bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
         currentIndex: currentIndex,
         items: _items,
         onTap: (i) => setState(() => currentIndex = i),
