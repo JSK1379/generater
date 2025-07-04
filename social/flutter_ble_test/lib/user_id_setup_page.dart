@@ -56,8 +56,8 @@ class _UserIdSetupPageState extends State<UserIdSetupPage> {
     await prefs.setString('user_id', userId);
 
     // 上傳 userId 給 server
-    const wsUrl = 'wss://near-ride-backend-api.onrender.com/ws';
-    final userApi = UserApiService(wsUrl);
+    const baseUrl = 'https://near-ride-backend-api.onrender.com';
+    final userApi = UserApiService(baseUrl);
     await userApi.uploadUserId(userId);
     userApi.dispose();
 
