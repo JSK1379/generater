@@ -20,7 +20,8 @@ class UserApiService {
       
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final userId = data['userId'] ?? data['user_id'] ?? data['id'];
+        final userIdRaw = data['userId'] ?? data['user_id'] ?? data['id'];
+        final userId = userIdRaw?.toString(); // 確保轉換為 String
         debugPrint('[UserApiService] HTTP 用戶註冊成功: email=$email, userId=$userId');
         return userId;
       } else {
