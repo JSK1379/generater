@@ -43,7 +43,7 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _connectToWebSocket() async {
     final success = await widget.chatService.connect(
-      'wss://commute-api.onrender.com',
+      'wss://near-ride-backend-api.onrender.com/ws',
       widget.roomId,
       widget.currentUser,
     );

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math';
-import 'user_api_service.dart';
+import 'chat_service.dart';
 
 class UserIdSetupPage extends StatefulWidget {
   const UserIdSetupPage({super.key});
@@ -55,11 +55,19 @@ class _UserIdSetupPageState extends State<UserIdSetupPage> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('user_id', userId);
 
-    // 上傳 userId 給 server
-    const baseUrl = 'https://near-ride-backend-api.onrender.com';
-    final userApi = UserApiService(baseUrl);
-    await userApi.uploadUserId(userId);
-    userApi.dispose();
+    // 向伺服器發送 register_user 訊息
+    try {
+      final chatService = ChatService();
+      const wsUrl = 'wss://near-ride-backend-api.onrender.com/ws';
+      await chatService.connect(wsUrl, '', userId);
+      chatService.webSocketService.sendMessage({
+        'type': 'register_user',
+        'userId': userId,
+      });
+      debugPrint('[UserIdSetup] 已發送 register_user: userId=$userId');
+    } catch (e) {
+      debugPrint('[UserIdSetup] 發送 register_user 失敗: $e');
+    }
 
     if (mounted) {
       Navigator.of(context).pushReplacementNamed('/main');

@@ -1,56 +1,31 @@
-import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:web_socket_channel/status.dart' as status;
 import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 
 class UserApiService {
-  final String wsUrl;
-  WebSocketChannel? _channel;
-
-  UserApiService(this.wsUrl);
+  final String baseUrl;
+  UserApiService(this.baseUrl);
 
   Future<void> uploadUserId(String userId) async {
-    if (_channel == null) {
-      try {
-        _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
-      } catch (e) {
-        return; // 無法連線時直接返回
-      }
-    }
-    final msg = jsonEncode({
-      'type': 'register_user',
-      'user_id': userId,
-    });
-    try {
-      _channel!.sink.add(msg);
-    } catch (e) {
-      // 連線失敗不處理
-    }
-    // 不等待回應，單向上傳
+    // 若有需要可改為 HTTP POST 上傳 userId
+    // 目前僅 log 行為
+    debugPrint('[UserApiService] uploadUserId: $userId');
   }
 
   Future<void> uploadAvatar(String userId, String base64Image) async {
-    if (_channel == null) {
-      try {
-        _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
-      } catch (e) {
-        return; // 無法連線時直接返回
-      }
+    // 將 base64 字串轉為 Uint8List
+    Uint8List imageBytes = base64Decode(base64Image);
+    final uri = Uri.parse(baseUrl); // 直接用 baseUrl，不拼接 upload_avatar
+    final request = http.MultipartRequest('POST', uri)
+      ..fields['user_id'] = userId
+      ..files.add(http.MultipartFile.fromBytes('avatar', imageBytes, filename: 'avatar.png'));
+    final response = await request.send();
+    if (response.statusCode == 200) {
+      debugPrint('[UserApiService] 頭像上傳成功 (user_id: $userId)');
+    } else {
+      debugPrint('[UserApiService] 頭像上傳失敗: ${response.statusCode}');
     }
-    final msg = jsonEncode({
-      'type': 'update_avatar',
-      'user_id': userId,
-      'avatar': base64Image,
-    });
-    try {
-      _channel!.sink.add(msg);
-    } catch (e) {
-      // 連線失敗不處理
-    }
-    // 不等待回應，單向上傳
   }
 
-  void dispose() {
-    _channel?.sink.close(status.goingAway);
-    _channel = null;
-  }
+  void dispose() {}
 }

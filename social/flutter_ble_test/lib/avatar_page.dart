@@ -58,7 +58,9 @@ class _AvatarPageState extends State<AvatarPage> {
       if (userId != null && userId.isNotEmpty) {
         const baseUrl = 'https://near-ride-backend-api.onrender.com';
         final userApi = UserApiService(baseUrl);
+        debugPrint('開始上傳頭貼');
         await userApi.uploadAvatar(userId, _base64Image!);
+        debugPrint('頭貼上傳結束');
         userApi.dispose();
       }
     } else if (_imageUrl != null) {

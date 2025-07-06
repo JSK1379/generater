@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'main_tab_page.dart';
 import 'user_id_setup_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'chat_service.dart';
 
 void main() {
   runApp(const MyApp());
@@ -46,8 +47,27 @@ class _AppInitializerState extends State<AppInitializer> {
       if (userId == null || userId.isEmpty) {
         Navigator.of(context).pushReplacementNamed('/setup');
       } else {
-        Navigator.of(context).pushReplacementNamed('/main');
+        // 有 user_id，向伺服器發送 register_user 訊息
+        await _registerUserToServer(userId);
+        if (mounted) {
+          Navigator.of(context).pushReplacementNamed('/main');
+        }
       }
+    }
+  }
+
+  Future<void> _registerUserToServer(String userId) async {
+    try {
+      final chatService = ChatService();
+      const wsUrl = 'wss://near-ride-backend-api.onrender.com/ws';
+      await chatService.connect(wsUrl, '', userId);
+      chatService.webSocketService.sendMessage({
+        'type': 'register_user',
+        'userId': userId,
+      });
+      debugPrint('[Main] 已發送 register_user: userId=$userId');
+    } catch (e) {
+      debugPrint('[Main] 發送 register_user 失敗: $e');
     }
   }
 

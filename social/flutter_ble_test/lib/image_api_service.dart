@@ -1,11 +1,27 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+
 
 class ImageApiService {
-  // 模擬圖片上傳，回傳一個假圖片ID
+  // 圖片上傳到 server，回傳圖片ID
   Future<String> uploadImage(File imageFile) async {
-    await Future.delayed(const Duration(seconds: 1));
-    // 假設每次都回傳一個固定ID
-    return 'mock_image_id_123';
+    final uri = Uri.parse('https://near-ride-backend-api.onrender.com/');
+    final request = http.MultipartRequest('POST', uri)
+      ..files.add(await http.MultipartFile.fromPath('file', imageFile.path));
+    final response = await request.send();
+    if (response.statusCode == 200) {
+      final respStr = await response.stream.bytesToString();
+      final data = jsonDecode(respStr);
+      // 假設 server 回傳 { "image_id": "xxx" }
+      final imageId = data['image_id'] ?? '';
+      debugPrint('[ImageApiService] 圖片上傳成功，image_id: $imageId');
+      return imageId;
+    } else {
+      debugPrint('[ImageApiService] 圖片上傳失敗: ${response.statusCode}');
+      throw Exception('圖片上傳失敗: ${response.statusCode}');
+    }
   }
 
   // 由圖片ID取得圖片URL（這裡用假網址）

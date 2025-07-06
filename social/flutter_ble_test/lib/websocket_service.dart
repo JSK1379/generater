@@ -102,7 +102,9 @@ class WebSocketService {
   void sendMessage(Map<String, dynamic> message) {
     if (_isConnected && _socket != null) {
       try {
-        _socket!.add(jsonEncode(message));
+        final jsonMessage = jsonEncode(message);
+        debugPrint('[WebSocket] 發送訊息: $jsonMessage');
+        _socket!.add(jsonMessage);
       } catch (e) {
         debugPrint('發送訊息失敗: $e');
       }

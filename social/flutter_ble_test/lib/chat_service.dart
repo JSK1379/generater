@@ -2,11 +2,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'websocket_service.dart';
 import 'chat_models.dart';
-import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ChatService extends ChangeNotifier {
   final WebSocketService _webSocketService = WebSocketService();
+  WebSocketService get webSocketService => _webSocketService;
   final List<ChatMessage> _messages = [];
   final List<ChatRoom> _chatRooms = [];
   ChatRoom? _currentRoom;
@@ -38,10 +38,24 @@ class ChatService extends ChangeNotifier {
 
   // 處理接收到的訊息
   void _handleMessage(Map<String, dynamic> data) {
-    switch (data['type']) {
+    debugPrint('ChatService: 收到訊息 - $data');
+    
+    // 使用 type 來判斷訊息類型
+    final messageType = data['type'];
+    
+    switch (messageType) {
       case 'message':
-        final message = ChatMessage.fromJson(data);
+        // 處理聊天訊息，使用您提供的格式
+        final message = ChatMessage(
+          id: data['id'] ?? 'msg_${DateTime.now().millisecondsSinceEpoch}',
+          type: 'text',
+          content: data['content'] ?? '', // 使用 content 欄位
+          sender: data['sender'] ?? '',
+          timestamp: DateTime.tryParse(data['timestamp'] ?? '') ?? DateTime.now(),
+          imageUrl: data['imageUrl'],
+        );
         _messages.add(message);
+        debugPrint('ChatService: 新增聊天訊息 - ${message.content}');
         notifyListeners();
         break;
       case 'room_joined':
@@ -61,9 +75,25 @@ class ChatService extends ChangeNotifier {
         break;
       case 'user_joined':
         // 處理用戶加入通知
+        debugPrint('ChatService: 用戶加入 - ${data['user']}');
         break;
       case 'user_left':
         // 處理用戶離開通知
+        debugPrint('ChatService: 用戶離開 - ${data['user']}');
+        break;
+      case 'connect_response':
+        // 處理連接回應
+        final fromUser = data['from'];
+        final toUser = data['to'];
+        final accept = data['accept'];
+        debugPrint('[ChatService] 收到 connect_response: from=$fromUser, to=$toUser, accept=$accept');
+        notifyListeners();
+        break;
+      case 'room_created':
+        // 處理聊天室創建回應
+        final roomId = data['roomId'];
+        debugPrint('[ChatService] 收到 room_created: roomId=$roomId');
+        notifyListeners();
         break;
     }
   }
@@ -133,13 +163,15 @@ class ChatService extends ChangeNotifier {
   void sendTextMessage(String roomId, String sender, String content, {String? imageUrl}) {
     final message = {
       'type': 'message',
-      'id': _generateMessageId(),
+      'id': 'msg_${DateTime.now().millisecondsSinceEpoch}',
       'sender': sender,
       'roomId': roomId,
       'content': content,
       'timestamp': DateTime.now().toUtc().toIso8601String(),
-      'imageUrl': imageUrl,
+      'imageUrl': imageUrl, // 如果沒有圖片會是 null
     };
+    
+    debugPrint('ChatService: 發送聊天訊息到伺服器 - $message');
     _webSocketService.sendMessage(message);
   }
 
@@ -184,12 +216,6 @@ class ChatService extends ChangeNotifier {
       'user': _currentUser,
     });
     debugPrint('[ChatService] Sent delete_room for: $roomId');
-  }
-
-  // 生成訊息 ID
-  String _generateMessageId() {
-    final random = Random();
-    return 'msg_${DateTime.now().millisecondsSinceEpoch}_${random.nextInt(1000)}';
   }
 
   // 生成房間 ID（根據兩個用戶 ID）
