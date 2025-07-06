@@ -47,7 +47,7 @@ class _AppInitializerState extends State<AppInitializer> {
       if (userId == null || userId.isEmpty) {
         Navigator.of(context).pushReplacementNamed('/setup');
       } else {
-        // 有 user_id，向伺服器發送 register_user 訊息
+        // 有 user_id，僅用 WebSocket 向伺服器發送 register_user 訊息
         await _registerUserToServer(userId);
         if (mounted) {
           Navigator.of(context).pushReplacementNamed('/main');
@@ -65,9 +65,9 @@ class _AppInitializerState extends State<AppInitializer> {
         'type': 'register_user',
         'userId': userId,
       });
-      debugPrint('[Main] 已發送 register_user: userId=$userId');
+      debugPrint('[Main] WebSocket 用戶註冊成功: userId=$userId');
     } catch (e) {
-      debugPrint('[Main] 發送 register_user 失敗: $e');
+      debugPrint('[Main] WebSocket 用戶註冊失敗: $e');
     }
   }
 

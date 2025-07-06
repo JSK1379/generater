@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math';
 import 'chat_service.dart';
+import 'user_api_service.dart';
 
 class UserIdSetupPage extends StatefulWidget {
   const UserIdSetupPage({super.key});
@@ -55,7 +56,32 @@ class _UserIdSetupPageState extends State<UserIdSetupPage> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('user_id', userId);
 
-    // 向伺服器發送 register_user 訊息
+    // 第一步：通過 HTTP 註冊用戶
+    try {
+      const baseUrl = 'https://near-ride-backend-api.onrender.com';
+      final userApiService = UserApiService(baseUrl);
+      final httpSuccess = await userApiService.registerUser(userId);
+      
+      if (!httpSuccess) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('HTTP 用戶註冊失敗，請稍後重試')),
+          );
+        }
+        return;
+      }
+      debugPrint('[UserIdSetup] HTTP 用戶註冊成功: $userId');
+    } catch (e) {
+      debugPrint('[UserIdSetup] HTTP 用戶註冊失敗: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('網路錯誤，請檢查網路連線')),
+        );
+      }
+      return;
+    }
+
+    // 第二步：通過 WebSocket 註冊用戶
     try {
       final chatService = ChatService();
       const wsUrl = 'wss://near-ride-backend-api.onrender.com/ws';
@@ -64,9 +90,10 @@ class _UserIdSetupPageState extends State<UserIdSetupPage> {
         'type': 'register_user',
         'userId': userId,
       });
-      debugPrint('[UserIdSetup] 已發送 register_user: userId=$userId');
+      debugPrint('[UserIdSetup] WebSocket 用戶註冊成功: $userId');
     } catch (e) {
-      debugPrint('[UserIdSetup] 發送 register_user 失敗: $e');
+      debugPrint('[UserIdSetup] WebSocket 用戶註冊失敗: $e');
+      // WebSocket 註冊失敗不阻止進入主頁面，因為 HTTP 已經成功
     }
 
     if (mounted) {

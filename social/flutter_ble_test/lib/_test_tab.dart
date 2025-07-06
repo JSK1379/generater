@@ -16,6 +16,7 @@ class TestTab extends StatefulWidget {
 
 class _TestTabState extends State<TestTab> {
   String _wsLog = '';
+  String _currentUserId = 'unknown_user';
   late final ChatService _chatService;
 
   @override
@@ -23,6 +24,14 @@ class _TestTabState extends State<TestTab> {
     super.initState();
     _chatService = ChatService();
     _chatService.webSocketService.addMessageListener(_onWsMessage);
+    _loadCurrentUserId();
+  }
+
+  Future<void> _loadCurrentUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _currentUserId = prefs.getString('user_id') ?? 'unknown_user';
+    });
   }
 
   void _onWsMessage(Map<String, dynamic> data) {
@@ -89,8 +98,30 @@ class _TestTabState extends State<TestTab> {
     );
   }
 
-  static Future<String?> _showInputDialog(BuildContext context, String title) async {
-    final controller = TextEditingController();
+  Future<void> _changeUserId(BuildContext context) async {
+    final prefs = await SharedPreferences.getInstance();
+    final currentUserId = prefs.getString('user_id') ?? 'unknown_user';
+    
+    if (!context.mounted) return;
+    final newUserId = await _showInputDialog(context, '請輸入新的用戶 ID', currentUserId);
+    if (newUserId == null || newUserId.isEmpty || newUserId == currentUserId) return;
+
+    // 保存新的用戶 ID
+    await prefs.setString('user_id', newUserId);
+
+    // 更新顯示
+    setState(() {
+      _currentUserId = newUserId;
+    });
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('用戶 ID 已更改為: $newUserId')),
+    );
+  }
+
+  static Future<String?> _showInputDialog(BuildContext context, String title, [String? initialValue]) async {
+    final controller = TextEditingController(text: initialValue ?? '');
     return showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -113,6 +144,20 @@ class _TestTabState extends State<TestTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue[200]!),
+              ),
+              child: Text(
+                '當前用戶 ID: $_currentUserId',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
+            ),
             const Text('伺服器回傳：', style: TextStyle(fontWeight: FontWeight.bold)),
             Container(
               padding: const EdgeInsets.all(8),
@@ -127,10 +172,19 @@ class _TestTabState extends State<TestTab> {
               onPressed: () => _sendConnectRequest(context),
               child: const Text('創建連接要求（對 0000）'),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
             ElevatedButton(
               onPressed: () => _createRoom(context),
               child: const Text('創建聊天室（與 0000）'),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () => _changeUserId(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('更改用戶 ID'),
             ),
           ],
         ),
