@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'chat_service.dart';
+import 'chat_service_singleton.dart';
 import 'chat_page.dart';
 import 'user_api_service.dart';
 
@@ -18,13 +18,11 @@ class TestTab extends StatefulWidget {
 class _TestTabState extends State<TestTab> {
   String _wsLog = '';
   String _currentUserId = 'unknown_user';
-  late final ChatService _chatService;
 
   @override
   void initState() {
     super.initState();
-    _chatService = ChatService();
-    _chatService.webSocketService.addMessageListener(_onWsMessage);
+    ChatServiceSingleton.instance.webSocketService.addMessageListener(_onWsMessage);
     _loadCurrentUserId();
   }
 
@@ -44,10 +42,14 @@ class _TestTabState extends State<TestTab> {
   Future<void> _sendConnectRequest(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
     final myUserId = prefs.getString('user_id') ?? 'unknown_user';
-    if (!_chatService.isConnected) {
-      await _chatService.connect(kTestWsServerUrl, 'test_room', myUserId);
+    final chatService = ChatServiceSingleton.instance;
+    if (!chatService.isConnected) {
+      await chatService.connectAndRegister(kTestWsServerUrl, 'test_room', myUserId);
+    } else {
+      // 確保用戶已註冊
+      chatService.ensureUserRegistered(myUserId);
     }
-    _chatService.sendConnectRequest(myUserId, kTestTargetUserId);
+    chatService.sendConnectRequest(myUserId, kTestTargetUserId);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('已發送連接要求給 0000')),
@@ -59,10 +61,14 @@ class _TestTabState extends State<TestTab> {
     if (roomName == null || roomName.isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
     final myUserId = prefs.getString('user_id') ?? 'unknown_user';
-    if (!_chatService.isConnected) {
-      await _chatService.connect(kTestWsServerUrl, 'test_room', myUserId);
+    final chatService = ChatServiceSingleton.instance;
+    if (!chatService.isConnected) {
+      await chatService.connectAndRegister(kTestWsServerUrl, 'test_room', myUserId);
+    } else {
+      // 確保用戶已註冊
+      chatService.ensureUserRegistered(myUserId);
     }
-    final roomId = await _chatService.createRoom(roomName);
+    final roomId = await chatService.createRoom(roomName);
     debugPrint('[TestTab] createRoom 回傳的 roomId: $roomId');
     String joinMsg = '';
     if (roomId != null) {
@@ -78,14 +84,14 @@ class _TestTabState extends State<TestTab> {
             roomId: roomId,
             roomName: roomName,
             currentUser: myUserId,
-            chatService: _chatService,
+            chatService: chatService,
           ),
         ),
       );
       debugPrint('[TestTab] Navigator.push 已執行');
       
       // 在背景執行 joinRoom
-      _chatService.joinRoom(roomId).then((_) {
+      chatService.joinRoom(roomId).then((_) {
         debugPrint('[TestTab] joinRoom 完成');
       });
       joinMsg = '\n已自動發送 join_room: {"type": "join_room", "roomId": "$roomId"}';
@@ -127,6 +133,24 @@ class _TestTabState extends State<TestTab> {
       // 保存新的用戶 ID
       await prefs.setString('user_id', newUserId);
       await prefs.setString('user_email', email);
+      
+      debugPrint('[TestTab] HTTP 註冊成功，獲得 userId: $newUserId');
+
+      // 斷開舊連線（如果存在）
+      final chatService = ChatServiceSingleton.instance;
+      if (chatService.isConnected) {
+        chatService.disconnect();
+        debugPrint('[TestTab] 已斷開舊的 WebSocket 連線');
+      }
+
+      // 通過 WebSocket 註冊用戶（使用現有的 ChatService 實例）
+      try {
+        await chatService.connectAndRegister(kTestWsServerUrl, '', newUserId);
+        debugPrint('[TestTab] WebSocket 用戶註冊成功: $newUserId');
+      } catch (e) {
+        debugPrint('[TestTab] WebSocket 用戶註冊失敗: $e');
+        // WebSocket 註冊失敗不阻止繼續操作
+      }
 
       // 更新顯示
       setState(() {
@@ -135,7 +159,7 @@ class _TestTabState extends State<TestTab> {
 
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('註冊成功！新的用戶 ID: $newUserId')),
+        SnackBar(content: Text('註冊成功！新的用戶 ID: $newUserId\nWebSocket 註冊已完成')),
       );
     } catch (e) {
       debugPrint('[TestTab] HTTP 註冊失敗: $e');

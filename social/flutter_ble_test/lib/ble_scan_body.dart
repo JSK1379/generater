@@ -4,7 +4,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:async';
-import 'chat_service.dart';
+import 'chat_service_singleton.dart';
 import 'chat_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -136,7 +136,7 @@ class _BleScanBodyState extends State<BleScanBody> {
 
     if (!mounted) return;
     // 用戶確認要連接，開啟聊天室
-    final chatService = ChatService();
+    final chatService = ChatServiceSingleton.instance;
     final currentUserId = await chatService.getCurrentUserId();
     final otherUserId = connectionInfo['deviceId']!; // 使用對方的裝置 ID 作為用戶 ID
     final roomId = chatService.generateRoomId(currentUserId, otherUserId);

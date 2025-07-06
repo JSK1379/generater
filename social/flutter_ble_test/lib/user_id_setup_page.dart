@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'chat_service.dart';
+import 'chat_service_singleton.dart';
 import 'user_api_service.dart';
 
 class UserIdSetupPage extends StatefulWidget {
@@ -40,7 +40,7 @@ class _UserIdSetupPageState extends State<UserIdSetupPage> {
 
     try {
       // 通過 HTTP 註冊並獲取用戶 ID
-      const baseUrl = 'https://near-ride-backend-api.onrender.com';
+      const baseUrl = 'https://near-ride-backend-api.onrender.com/';
       final userApiService = UserApiService(baseUrl);
       final userId = await userApiService.registerUserWithEmail(email, password);
       
@@ -65,7 +65,7 @@ class _UserIdSetupPageState extends State<UserIdSetupPage> {
 
       // 通過 WebSocket 註冊用戶
       try {
-        final chatService = ChatService();
+        final chatService = ChatServiceSingleton.instance;
         const wsUrl = 'wss://near-ride-backend-api.onrender.com/ws';
         await chatService.connect(wsUrl, '', userId);
         chatService.webSocketService.sendMessage({

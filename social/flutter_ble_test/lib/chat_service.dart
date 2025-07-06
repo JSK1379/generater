@@ -9,6 +9,7 @@ class ChatService extends ChangeNotifier {
   WebSocketService get webSocketService => _webSocketService;
   final List<ChatMessage> _messages = [];
   final List<ChatRoom> _chatRooms = [];
+  final Set<String> _joinedRooms = <String>{}; // 已加入的房間列表
   ChatRoom? _currentRoom;
   bool _isConnected = false;
   String _currentUser = '';
@@ -34,6 +35,16 @@ class ChatService extends ChangeNotifier {
   Future<bool> connect(String wsUrl, String roomId, String userId) async {
     // 直接使用傳入的 wsUrl，不再拼接任何內容
     return await _webSocketService.connect(wsUrl);
+  }
+
+  // 連接 WebSocket 並註冊用戶
+  Future<bool> connectAndRegister(String url, String roomId, String userId) async {
+    final success = await connect(url, roomId, userId);
+    if (success) {
+      // 連線成功後立即註冊用戶
+      ensureUserRegistered(userId);
+    }
+    return success;
   }
 
   // 處理接收到的訊息
@@ -64,6 +75,7 @@ class ChatService extends ChangeNotifier {
         if (!_chatRooms.any((r) => r.id == room.id)) {
           _chatRooms.add(room);
         }
+        _joinedRooms.add(room.id); // 將房間 ID 加入已加入房間列表
         notifyListeners();
         break;
       case 'room_list':
@@ -125,12 +137,21 @@ class ChatService extends ChangeNotifier {
     return completer.future;
   }
 
-  // 加入房間，伺服器回傳 joined_room
+  // 加入房間，伺服器回傳 joined_room（添加防呆機制）
   Future<bool> joinRoom(String roomId) async {
+    // 防呆：檢查是否已加入此房間
+    if (_joinedRooms.contains(roomId)) {
+      debugPrint('[ChatService] 房間 $roomId 已加入，跳過重複 join');
+      return true;
+    }
+
+    debugPrint('[ChatService] 正在加入房間: $roomId');
     final completer = Completer<bool>();
     void handler(Map<String, dynamic> data) {
       if (data['type'] == 'joined_room' && data['roomId'] == roomId) {
         _webSocketService.removeMessageListener(handler);
+        _joinedRooms.add(roomId); // 記錄已加入的房間
+        debugPrint('[ChatService] 成功加入房間: $roomId');
         completer.complete(true);
       }
     }
@@ -231,6 +252,17 @@ class ChatService extends ChangeNotifier {
   Future<String> getCurrentUserId() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('user_id') ?? 'unknown_user';
+  }
+
+  // 確保用戶已註冊（在發送其他請求前調用）
+  void ensureUserRegistered(String userId) {
+    if (_isConnected) {
+      _webSocketService.sendMessage({
+        'type': 'register_user',
+        'userId': userId,
+      });
+      debugPrint('[ChatService] 確保用戶已註冊: $userId');
+    }
   }
 
   @override

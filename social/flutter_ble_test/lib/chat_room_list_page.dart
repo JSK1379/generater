@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'chat_service.dart';
+import 'chat_service_singleton.dart';
 import 'chat_page.dart';
 
 class ChatRoomListPage extends StatefulWidget {
@@ -37,7 +37,7 @@ class _ChatRoomListPageState extends State<ChatRoomListPage> {
 
 
   void _enterChatRoom(ChatRoomHistory history) async {
-    final chatService = ChatService();
+    final chatService = ChatServiceSingleton.instance;
     final currentUserId = await chatService.getCurrentUserId();
     
     if (!mounted) return;
@@ -160,7 +160,7 @@ class _ChatRoomListPageState extends State<ChatRoomListPage> {
               if (selected != null && selected.isNotEmpty) {
                 // 呼叫伺服器刪除聊天室
                 for (final roomId in selected) {
-                  ChatService().deleteRoom(roomId);
+                  ChatServiceSingleton.instance.deleteRoom(roomId);
                 }
                 // 用戶端隱藏聊天室
                 setState(() {

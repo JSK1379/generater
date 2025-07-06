@@ -12,7 +12,7 @@ import 'main_tab_page.dart';
 import 'settings_ble_helper.dart';
 import 'image_api_service.dart';
 import 'chat_page.dart';
-import 'chat_service.dart';
+import 'chat_service_singleton.dart';
 
 class SettingsPage extends StatefulWidget {
   final bool isAdvertising;
@@ -159,7 +159,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (!mounted) return;
     if (result == true) {
       // 用戶接受連接，開啟聊天室
-      final chatService = ChatService();
+      final chatService = ChatServiceSingleton.instance;
       final currentUserId = await chatService.getCurrentUserId();
       final roomId = chatService.generateRoomId(currentUserId, deviceId);
       

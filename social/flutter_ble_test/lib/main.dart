@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'main_tab_page.dart';
 import 'user_id_setup_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'chat_service.dart';
+import 'chat_service_singleton.dart';
 
 void main() {
   runApp(const MyApp());
@@ -58,7 +58,7 @@ class _AppInitializerState extends State<AppInitializer> {
 
   Future<void> _registerUserToServer(String userId) async {
     try {
-      final chatService = ChatService();
+      final chatService = ChatServiceSingleton.instance;
       const wsUrl = 'wss://near-ride-backend-api.onrender.com/ws';
       await chatService.connect(wsUrl, '', userId);
       chatService.webSocketService.sendMessage({
