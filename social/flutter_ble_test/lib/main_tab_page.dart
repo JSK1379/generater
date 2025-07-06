@@ -19,13 +19,11 @@ class MainTabPageState extends State<MainTabPage> {
   bool _isAdvertising = false;
   final TextEditingController _nicknameController = TextEditingController();
   Uint8List? _avatarThumbnailBytes;
-  bool _hasChatHistory = false;
 
   @override
   void initState() {
     super.initState();
     _loadNicknameFromPrefs();
-    _checkChatHistory();
   }
 
   Future<void> _loadNicknameFromPrefs() async {
@@ -45,16 +43,8 @@ class MainTabPageState extends State<MainTabPage> {
     });
   }
 
-  Future<void> _checkChatHistory() async {
-    final prefs = await SharedPreferences.getInstance();
-    final history = prefs.getStringList('chat_history') ?? [];
-    setState(() {
-      _hasChatHistory = history.isNotEmpty;
-    });
-  }
-
   void updateChatHistoryDisplay() {
-    _checkChatHistory();
+    setState(() {});
   }
 
   List<Widget> get _pages => [
@@ -63,7 +53,7 @@ class MainTabPageState extends State<MainTabPage> {
       setAvatarThumbnailBytes: _setAvatarThumbnailBytes,
       avatarThumbnailBytes: _avatarThumbnailBytes,
     ),
-    if (_hasChatHistory) const ChatRoomListPage(),
+    const ChatRoomListPage(), // 移除條件判斷，常態顯示
     // 新增測試分頁
     const TestTab(),
     SettingsPage(
@@ -91,8 +81,7 @@ class MainTabPageState extends State<MainTabPage> {
   List<BottomNavigationBarItem> get _items => [
     const BottomNavigationBarItem(icon: Icon(Icons.bluetooth), label: '藍牙'),
     const BottomNavigationBarItem(icon: Icon(Icons.face), label: 'Avatar'),
-    if (_hasChatHistory)
-      const BottomNavigationBarItem(icon: Icon(Icons.chat), label: '聊天室'),
+    const BottomNavigationBarItem(icon: Icon(Icons.chat), label: '聊天室'), // 移除條件判斷，常態顯示
     const BottomNavigationBarItem(icon: Icon(Icons.science), label: '測試'),
     const BottomNavigationBarItem(icon: Icon(Icons.settings), label: '設置'),
   ];
