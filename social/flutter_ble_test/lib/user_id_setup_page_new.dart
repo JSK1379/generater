@@ -40,7 +40,7 @@ class _UserIdSetupPageState extends State<UserIdSetupPage> {
 
     try {
       // 通過 HTTP 註冊並獲取用戶 ID
-      const baseUrl = 'https://near-ride-backend-api.onrender.com';
+      const baseUrl = 'https://near-ride-backend-api.onrender.com/';
       final userApiService = UserApiService(baseUrl);
       final userId = await userApiService.registerUserWithEmail(email, password);
       

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'chat_service.dart';
 import 'chat_page.dart';
+import 'user_api_service.dart';
 
 const String kTestWsServerUrl = 'wss://near-ride-backend-api.onrender.com/ws';
 const String kTestTargetUserId = '0000';
@@ -100,23 +101,98 @@ class _TestTabState extends State<TestTab> {
 
   Future<void> _changeUserId(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
-    final currentUserId = prefs.getString('user_id') ?? 'unknown_user';
     
+    // 顯示輸入對話框讓用戶輸入郵件和密碼
     if (!context.mounted) return;
-    final newUserId = await _showInputDialog(context, '請輸入新的用戶 ID', currentUserId);
-    if (newUserId == null || newUserId.isEmpty || newUserId == currentUserId) return;
+    final result = await _showEmailPasswordDialog(context);
+    if (result == null) return;
+    
+    final email = result['email']!;
+    final password = result['password']!;
 
-    // 保存新的用戶 ID
-    await prefs.setString('user_id', newUserId);
+    try {
+      // 通過 HTTP 註冊並獲取新的用戶 ID
+      const baseUrl = 'https://near-ride-backend-api.onrender.com/';
+      final userApiService = UserApiService(baseUrl);
+      final newUserId = await userApiService.registerUserWithEmail(email, password);
+      
+      if (newUserId == null) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('註冊失敗，請檢查郵件地址和密碼')),
+        );
+        return;
+      }
 
-    // 更新顯示
-    setState(() {
-      _currentUserId = newUserId;
-    });
+      // 保存新的用戶 ID
+      await prefs.setString('user_id', newUserId);
+      await prefs.setString('user_email', email);
 
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('用戶 ID 已更改為: $newUserId')),
+      // 更新顯示
+      setState(() {
+        _currentUserId = newUserId;
+      });
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('註冊成功！新的用戶 ID: $newUserId')),
+      );
+    } catch (e) {
+      debugPrint('[TestTab] HTTP 註冊失敗: $e');
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('註冊出錯，請檢查網路連線')),
+      );
+    }
+  }
+
+  static Future<Map<String, String>?> _showEmailPasswordDialog(BuildContext context) async {
+    final emailController = TextEditingController();
+    final passwordController = TextEditingController();
+    
+    return showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('註冊新用戶'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: '郵件地址',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: passwordController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: '密碼',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final email = emailController.text.trim();
+              final password = passwordController.text.trim();
+              if (email.isNotEmpty && password.isNotEmpty) {
+                Navigator.pop(context, {'email': email, 'password': password});
+              }
+            },
+            child: const Text('註冊'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -184,7 +260,7 @@ class _TestTabState extends State<TestTab> {
                 backgroundColor: Colors.orange,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('更改用戶 ID'),
+              child: const Text('註冊新用戶'),
             ),
           ],
         ),

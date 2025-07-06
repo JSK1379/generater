@@ -6,9 +6,36 @@ class UserApiService {
   final String baseUrl;
   UserApiService(this.baseUrl);
 
+  Future<String?> registerUserWithEmail(String email, String password) async {
+    try {
+      final uri = Uri.parse(baseUrl);
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email,
+          'password': password,
+        }),
+      );
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final userId = data['userId'] ?? data['user_id'] ?? data['id'];
+        debugPrint('[UserApiService] HTTP 用戶註冊成功: email=$email, userId=$userId');
+        return userId;
+      } else {
+        debugPrint('[UserApiService] HTTP 用戶註冊失敗: ${response.statusCode}, ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('[UserApiService] HTTP 用戶註冊錯誤: $e');
+      return null;
+    }
+  }
+
   Future<bool> registerUser(String userId) async {
     try {
-      final uri = Uri.parse(baseUrl); // 移除 /register_user 路徑
+      final uri = Uri.parse(baseUrl);
       final response = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
