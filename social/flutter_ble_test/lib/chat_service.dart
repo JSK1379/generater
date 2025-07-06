@@ -160,11 +160,14 @@ class ChatService extends ChangeNotifier {
   }
 
   // 傳送聊天訊息
-  void sendTextMessage(String roomId, String sender, String content, {String? imageUrl}) {
+  void sendTextMessage(String roomId, String sender, String content, {String? imageUrl}) async {
+    // 獲取當前用戶 ID 作為 id 欄位
+    final userId = await getCurrentUserId();
+    
     final message = {
       'type': 'message',
-      'id': 'msg_${DateTime.now().millisecondsSinceEpoch}',
-      'sender': sender,
+      'id': userId, // id 欄位使用用戶 ID
+      'sender': int.tryParse(userId) ?? 0, // sender 改為 int 類型
       'roomId': roomId,
       'content': content,
       'timestamp': DateTime.now().toUtc().toIso8601String(),
