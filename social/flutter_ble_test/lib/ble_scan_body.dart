@@ -39,10 +39,7 @@ class _BleScanBodyState extends State<BleScanBody> {
         }
       });
       FlutterBluePlus.onScanResults.listen((r) {
-        // 移除 debug print 來減少重複的日誌輸出
-        if (mounted) {
-          setState(() => _scanResults = r);
-        }
+        if (mounted) setState(() => _scanResults = r);
       });
     });
   }
@@ -56,12 +53,12 @@ class _BleScanBodyState extends State<BleScanBody> {
   }
 
   Future<void> _requestPermissions() async {
-    // 依次請求所需的權限
-    final bluetoothScanStatus = await Permission.bluetoothScan.request();
-    final bluetoothConnectStatus = await Permission.bluetoothConnect.request();
-    final locationStatus = await Permission.locationWhenInUse.request();
+    // 分別請求每一個權限
+    var bluetoothScanStatus = await Permission.bluetoothScan.request();
+    var bluetoothConnectStatus = await Permission.bluetoothConnect.request();
+    var locationStatus = await Permission.locationWhenInUse.request();
     
-    // 檢查權限是否都已授予
+    // 檢查是否所有權限都被允許
     if (bluetoothScanStatus != PermissionStatus.granted ||
         bluetoothConnectStatus != PermissionStatus.granted ||
         locationStatus != PermissionStatus.granted) {
@@ -72,8 +69,10 @@ class _BleScanBodyState extends State<BleScanBody> {
       }
       return;
     }
-    // 權限都已授予，不需要重啟 app
-    debugPrint('所有藍牙權限已獲得授權');
+    // 權限允許後自動重啟 app
+    // Future.delayed(const Duration(milliseconds: 300), () {
+    //   runApp(const MyApp());
+    // });
   }
 
   Future<void> _startScan() async {
