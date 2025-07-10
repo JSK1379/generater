@@ -110,6 +110,7 @@ class _ChatPageState extends State<ChatPage> {
           ],
         ),
         body: SafeArea(
+          bottom: false, // 不處理底部，讓我們手動處理
           child: Column(
             children: [
               // 訊息列表
@@ -140,11 +141,11 @@ class _ChatPageState extends State<ChatPage> {
             
             // 輸入框
             Container(
-              padding: EdgeInsets.fromLTRB(
-                8.0,
-                8.0,
-                8.0,
-                8.0 + MediaQuery.of(context).viewInsets.bottom,
+              padding: EdgeInsets.only(
+                left: 8.0,
+                right: 8.0,
+                top: 8.0,
+                bottom: 8.0 + MediaQuery.of(context).padding.bottom,
               ),
               decoration: BoxDecoration(
                 color: Theme.of(context).scaffoldBackgroundColor,

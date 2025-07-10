@@ -165,4 +165,56 @@ class SettingsBleHelper {
     await _blePeripheral.start(advertiseData: advertiseData);
   }
 
+  /// 帶有 userId 的廣播方法
+  static Future<void> advertiseWithUserId({
+    required String nickname,
+    required String userId,
+    required String imageId,
+    required bool enable,
+  }) async {
+    if (!enable) {
+      await _blePeripheral.stop();
+      return;
+    }
+    
+    final nicknameBytes = utf8.encode(nickname.isEmpty ? 'Unknown' : nickname);
+    final userIdBytes = utf8.encode(userId);
+    List<int> imageIdBytes = utf8.encode(imageId);
+    
+    // 計算可用空間: 總共24字節 - 頭部(4字節) - nickname長度(1字節) - userId長度(1字節) - imageId長度(1字節)
+    int maxTotal = 24;
+    int headerSize = 4 + 1 + 1 + 1; // BLEU + nickname_len + userId_len + imageId_len
+    int used = headerSize + nicknameBytes.length + userIdBytes.length;
+    
+    // 如果 imageId 太長，則截斷
+    if (used + imageIdBytes.length > maxTotal) {
+      int allowed = maxTotal - used;
+      if (allowed < 0) allowed = 0;
+      if (imageIdBytes.length > allowed) {
+        imageIdBytes = imageIdBytes.sublist(0, allowed);
+      }
+    }
+    
+    final List<int> manufacturerData = [0x42, 0x4C, 0x45, 0x55]; // BLEU (BLE User)
+    manufacturerData.add(nicknameBytes.length);
+    manufacturerData.addAll(nicknameBytes);
+    manufacturerData.add(userIdBytes.length);
+    manufacturerData.addAll(userIdBytes);
+    manufacturerData.add(imageIdBytes.length);
+    manufacturerData.addAll(imageIdBytes);
+    
+    debugPrint('[SettingsBleHelper] 廣播 userId manufacturerData: ${manufacturerData.toString()}, 長度: ${manufacturerData.length}');
+    debugPrint('[SettingsBleHelper] 廣播內容 - nickname: $nickname, userId: $userId, imageId: $imageId');
+    
+    final advertiseData = AdvertiseData(
+      localName: nickname,
+      manufacturerId: 0x1236, // 使用新的 manufacturer ID
+      manufacturerData: Uint8List.fromList(manufacturerData),
+      includeDeviceName: true,
+    );
+    
+    debugPrint('[SettingsBleHelper] Start BLE advertise with userId, localName: $nickname, userId: $userId, imageId: $imageId');
+    await _blePeripheral.start(advertiseData: advertiseData);
+  }
+
 }

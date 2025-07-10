@@ -110,7 +110,10 @@ class _BleScanBodyState extends State<BleScanBody> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('暱稱: ${connectionInfo['nickname']}'),
-            Text('裝置ID: ${connectionInfo['deviceId']}'),
+            if (connectionInfo['userId']!.isNotEmpty)
+              Text('用戶ID: ${connectionInfo['userId']}')
+            else
+              Text('裝置ID: ${connectionInfo['deviceId']}'),
             Text('信號強度: ${connectionInfo['rssi']}'),
             if (connectionInfo['imageId']!.isNotEmpty)
               Text('圖片ID: ${connectionInfo['imageId']}'),
@@ -137,7 +140,12 @@ class _BleScanBodyState extends State<BleScanBody> {
     // 用戶確認要連接，開啟聊天室
     final chatService = ChatServiceSingleton.instance;
     final currentUserId = await chatService.getCurrentUserId();
-    final otherUserId = connectionInfo['deviceId']!; // 使用對方的裝置 ID 作為用戶 ID
+    
+    // 優先使用 userId，如果沒有則回退到 deviceId
+    final otherUserId = connectionInfo['userId']!.isNotEmpty 
+        ? connectionInfo['userId']! 
+        : connectionInfo['deviceId']!;
+    
     final roomId = chatService.generateRoomId(currentUserId, otherUserId);
 
     // 儲存聊天室歷史
@@ -172,20 +180,43 @@ class _BleScanBodyState extends State<BleScanBody> {
       );
     }
 
-    // 取得本機 userId
-    final prefs = await SharedPreferences.getInstance();
-    final myUserId = prefs.getString('user_id') ?? 'unknown_user';
-    final toUserId = connectionInfo['userId'] ?? connectionInfo['deviceId'] ?? '';
-    chatService.sendConnectRequest(myUserId, toUserId);
-    debugPrint('[BLE] Sent connect_request from: $myUserId to: $toUserId');
+    // 發送連線請求，使用 userId
+    chatService.sendConnectRequest(currentUserId, otherUserId);
+    debugPrint('[BLE] Sent connect_request from: $currentUserId to: $otherUserId (原裝置ID: ${connectionInfo['deviceId']})');
   }
   
   Map<String, String> _extractDeviceInfo(ScanResult scanResult) {
     String nickname = '未知裝置';
     String imageId = '';
+    String userId = '';
     
     final manufacturerData = scanResult.advertisementData.manufacturerData;
-    if (manufacturerData.containsKey(0x1234)) {
+    
+    // 優先檢查包含 userId 的廣播 (0x1236, BLEU)
+    if (manufacturerData.containsKey(0x1236)) {
+      final bytes = manufacturerData[0x1236]!;
+      if (bytes.length > 7 && bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x55) {
+        // BLEU 格式: [BLEU][nickname_len][nickname][userId_len][userId][imageId_len][imageId]
+        final nameLen = bytes[4];
+        if (bytes.length >= 5 + nameLen + 1) {
+          nickname = utf8.decode(bytes.sublist(5, 5 + nameLen));
+          final userIdLen = bytes[5 + nameLen];
+          if (bytes.length >= 6 + nameLen + userIdLen) {
+            userId = utf8.decode(bytes.sublist(6 + nameLen, 6 + nameLen + userIdLen));
+            // 檢查是否有 imageId
+            if (bytes.length >= 7 + nameLen + userIdLen) {
+              final imageIdLen = bytes[6 + nameLen + userIdLen];
+              if (imageIdLen > 0 && bytes.length >= 7 + nameLen + userIdLen + imageIdLen) {
+                imageId = utf8.decode(bytes.sublist(7 + nameLen + userIdLen, 7 + nameLen + userIdLen + imageIdLen));
+              }
+            }
+          }
+        }
+        debugPrint('[BLE] 解析到帶 userId 的廣播 - nickname: $nickname, userId: $userId, imageId: $imageId');
+      }
+    }
+    // 如果沒有找到 userId 廣播，回退到舊格式
+    else if (manufacturerData.containsKey(0x1234)) {
       final bytes = manufacturerData[0x1234]!;
       if (bytes.length > 5 && bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x41) {
         final nameLen = bytes[4];
@@ -194,11 +225,12 @@ class _BleScanBodyState extends State<BleScanBody> {
         }
       }
     }
-    if (manufacturerData.containsKey(0x1235)) {
+    else if (manufacturerData.containsKey(0x1235)) {
       final bytes = manufacturerData[0x1235]!;
       if (bytes.length > 5 && bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x49) {
         final nameLen = bytes[4];
         if (bytes.length >= 6 + nameLen) {
+          nickname = utf8.decode(bytes.sublist(5, 5 + nameLen));
           final imageIdLen = bytes[5 + nameLen];
           if (imageIdLen > 0 && bytes.length >= 6 + nameLen + imageIdLen) {
             imageId = utf8.decode(bytes.sublist(6 + nameLen, 6 + nameLen + imageIdLen));
@@ -210,6 +242,7 @@ class _BleScanBodyState extends State<BleScanBody> {
     return {
       'nickname': nickname,
       'imageId': imageId,
+      'userId': userId,
       'deviceId': scanResult.device.remoteId.str,
       'rssi': '${scanResult.rssi} dBm'
     };

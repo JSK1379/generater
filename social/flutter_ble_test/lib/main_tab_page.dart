@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:typed_data';
 import 'settings_ble_helper.dart';
 import '_test_tab.dart';
+import 'chat_service_singleton.dart';
 
 class MainTabPage extends StatefulWidget {
   const MainTabPage({super.key});
@@ -62,14 +63,21 @@ class MainTabPageState extends State<MainTabPage> {
         setState(() {
           _isAdvertising = v;
         });
-        // 呼叫 BLE 廣播
+        // 呼叫 BLE 廣播，使用包含 userId 的新方法
         final nickname = _nicknameController.text;
-        await SettingsBleHelper.advertiseWithAvatar(
+        
+        // 獲取當前用戶 ID
+        final chatService = ChatServiceSingleton.instance;
+        final userId = await chatService.getCurrentUserId();
+        
+        // 使用新的 advertiseWithUserId 方法
+        await SettingsBleHelper.advertiseWithUserId(
           nickname: nickname,
-          avatarImageProvider: _avatarThumbnailBytes != null ? MemoryImage(_avatarThumbnailBytes!) : null,
+          userId: userId,
+          imageId: '', // 可以後續擴展
           enable: v,
         );
-        debugPrint('[MainTabPage] onToggleAdvertise: $v, nickname: $nickname');
+        debugPrint('[MainTabPage] onToggleAdvertise: $v, nickname: $nickname, userId: $userId');
       },
       nicknameController: _nicknameController,
       setAvatarThumbnailBytes: _setAvatarThumbnailBytes,
