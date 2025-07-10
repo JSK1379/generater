@@ -178,12 +178,6 @@ class _TestTabState extends State<TestTab> {
           _currentUserId = newUserId;
         });
       }
-  @override
-  void dispose() {
-    _disposed = true;
-    ChatServiceSingleton.instance.webSocketService.removeMessageListener(_onWsMessage);
-    super.dispose();
-  }
 
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -347,5 +341,12 @@ class _TestTabState extends State<TestTab> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    ChatServiceSingleton.instance.webSocketService.removeMessageListener(_onWsMessage);
+    super.dispose();
   }
 }
