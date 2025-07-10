@@ -1,86 +1,26 @@
 import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'dart:async';
 import 'avatar_utils.dart';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'chat_service_singleton.dart'; // 添加這一行
 
 class SettingsBleHelper {
 
-  static void Function(String nickname, String imageId, String deviceId)? _onConnectionRequestCallback;
   static final FlutterBlePeripheral _blePeripheral = FlutterBlePeripheral();
-  static bool _isListening = false;
-
-  /// 註冊收到連接請求時的 callback
-  static void setOnConnectionRequestCallback(void Function(String nickname, String imageId, String deviceId) callback) {
-    debugPrint('[SettingsBleHelper] setOnConnectionRequestCallback called');
-    _onConnectionRequestCallback = callback;
-    _startListeningForConnections();
-  }
-
-  /// 開始監聽 BLE 連接
-  static void _startListeningForConnections() async {
-    if (_isListening) return;
-    _isListening = true;
-    
-    debugPrint('[SettingsBleHelper] Started listening for BLE connections');
-    
-    // 監聽 FlutterBluePlus 的連接狀態變化
-    FlutterBluePlus.events.onConnectionStateChanged.listen((event) {
-      debugPrint('[SettingsBleHelper] Connection state changed: ${event.device.remoteId.str} -> ${event.connectionState}');
-      
-      if (event.connectionState == BluetoothConnectionState.connected) {
-        // 有裝置連接到我們，觸發連接請求回調
-        final deviceName = event.device.platformName.isNotEmpty 
-            ? event.device.platformName 
-            : 'Unknown Device';
-        
-        debugPrint('[SettingsBleHelper] Device connected: $deviceName (${event.device.remoteId.str})');
-        
-        // 觸發連接請求回調
-        _onConnectionRequestCallback?.call(
-          deviceName,
-          '', // imageId - 可能需要從廣播數據中獲取
-          event.device.remoteId.str
-        );
-      }
-    });
-    
-    // 監聽掃描結果，檢查是否有人試圖連接我們
-    FlutterBluePlus.onScanResults.listen((results) {
-      for (final result in results) {
-        // 檢查是否有包含連接請求的廣播數據
-        final manufacturerData = result.advertisementData.manufacturerData;
-        if (manufacturerData.containsKey(0x1234)) {
-          final bytes = manufacturerData[0x1234]!;
-          if (bytes.length > 4 && 
-              bytes[0] == 0x42 && bytes[1] == 0x4C && 
-              bytes[2] == 0x45 && bytes[3] == 0x41) {
-            
-            // 解析暱稱
-            final nameLen = bytes[4];
-            if (bytes.length >= 5 + nameLen) {
-              final nickname = utf8.decode(bytes.sublist(5, 5 + nameLen));
-              
-              debugPrint('[SettingsBleHelper] Detected potential connection request from: $nickname');
-              
-              // 這裡可以添加更多邏輯來處理連接請求
-            }
-          }
-        }
-      }
-    });
-  }
-  
-  /// 定期檢查是否有新的連接（暫時解決方案）
-  // ...existing code...
 
   /// 模擬收到 BLE 連接請求（for UI 測試用）
   static void simulateIncomingConnection(String nickname, String imageId, String deviceId) {
     debugPrint('[SettingsBleHelper] simulateIncomingConnection called: nickname=$nickname, imageId=$imageId, deviceId=$deviceId');
-    debugPrint('[SettingsBleHelper] _onConnectionRequestCallback is null: ${_onConnectionRequestCallback == null}');
-    _onConnectionRequestCallback?.call(nickname, imageId, deviceId);
+    
+    // 使用 ChatServiceSingleton 直接觸發連接請求
+    final chatService = ChatServiceSingleton.instance;
+    // 獲取當前用戶 ID
+    chatService.getCurrentUserId().then((currentUserId) {
+      // 使用公共方法觸發連接請求
+      chatService.triggerConnectRequest(deviceId, currentUserId);
+    });
   }
 
   static Future<void> advertiseWithAvatar({

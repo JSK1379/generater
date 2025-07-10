@@ -10,9 +10,6 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'main_tab_page.dart';
 import 'settings_ble_helper.dart';
-import 'image_api_service.dart';
-import 'chat_page.dart';
-import 'chat_service_singleton.dart';
 
 class SettingsPage extends StatefulWidget {
   final bool isAdvertising;
@@ -47,8 +44,6 @@ class _SettingsPageState extends State<SettingsPage> {
   final List<Map<String, dynamic>> _commuteRoute = [];
   Timer? _commuteTimer;
 
-  final ImageApiService _imageApiService = ImageApiService();
-  String? _mockImageUrl;
   String? _userId;
 
   Future<void> _pickAvatarFromGallery() async {
@@ -115,117 +110,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _loadAvatarFromPrefs();
     }
     _autoCommuteTimer = Timer.periodic(const Duration(minutes: 1), (_) => _autoCheckCommutePeriod());
-    
-    // 設定連接請求回調
-    SettingsBleHelper.setOnConnectionRequestCallback((nickname, imageId, deviceId) {
-      _showIncomingConnectionDialog(nickname, imageId, deviceId);
-    });
     _loadUserId();
-  }
-  
-  Future<void> _showIncomingConnectionDialog(String nickname, String imageId, String deviceId) async {
-    debugPrint('[SettingsPage] _showIncomingConnectionDialog called: nickname=$nickname, imageId=$imageId, deviceId=$deviceId');
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) => AlertDialog(
-        title: const Text('收到連接請求'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('對方暱稱: $nickname'),
-            Text('裝置ID: ${deviceId.substring(0, 8)}...'),
-            if (imageId.isNotEmpty) Text('圖片ID: $imageId'),
-            const SizedBox(height: 16),
-            if (imageId.isNotEmpty && _mockImageUrl != null)
-              Image.network(_imageApiService.getImageUrl(imageId), width: 100, height: 100),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('拒絕'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('接受'),
-          ),
-        ],
-      ),
-    );
-
-    debugPrint('[SettingsPage] Connection dialog result: $result');
-    if (!mounted) return;
-    
-    // 用戶做出了選擇，先向服務器發送 connect_response
-    final chatService = ChatServiceSingleton.instance;
-    final currentUserId = await chatService.getCurrentUserId();
-    final roomId = chatService.generateRoomId(currentUserId, deviceId);
-    
-    // 發送接受/拒絕的回應給服務器
-    chatService.sendConnectResponse(currentUserId, deviceId, result == true, result == true ? roomId : null);
-    
-    if (result == true) {
-      // 用戶接受連接，開啟聊天室
-      
-      // 儲存聊天室歷史
-      await _saveChatRoomHistory(roomId, '與 $nickname 的聊天', deviceId);
-      
-      if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ChatPage(
-            roomId: roomId,
-            roomName: '與 $nickname 的聊天',
-            currentUser: currentUserId,
-            chatService: chatService,
-          ),
-        ),
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已接受 $nickname 的連接請求')),
-        );
-      }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已拒絕連接請求')),
-        );
-      }
-    }
-  }
-
-  Future<void> _saveChatRoomHistory(String roomId, String roomName, String otherUserId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final historyJson = prefs.getStringList('chat_history') ?? [];
-    
-    // 檢查是否已存在
-    final exists = historyJson.any((jsonStr) {
-      final data = jsonDecode(jsonStr);
-      return data['roomId'] == roomId;
-    });
-    
-    if (!exists) {
-      final newHistory = {
-        'roomId': roomId,
-        'roomName': roomName,
-        'lastMessage': '',
-        'lastMessageTime': DateTime.now().toIso8601String(),
-        'otherUserId': otherUserId,
-      };
-      historyJson.add(jsonEncode(newHistory));
-      await prefs.setStringList('chat_history', historyJson);
-      
-      if (!mounted) return;
-      // 通知主頁面更新聊天室分頁顯示
-      final mainTab = context.findAncestorStateOfType<MainTabPageState>();
-      if (mainTab != null) {
-        mainTab.updateChatHistoryDisplay();
-      }
-    }
   }
 
   @override

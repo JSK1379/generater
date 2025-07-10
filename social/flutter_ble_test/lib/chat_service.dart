@@ -17,6 +17,8 @@ class ChatService extends ChangeNotifier {
   
   // 連接請求回調監聽器
   final List<void Function(String from, String to, bool accept)> _connectResponseListeners = [];
+  // 全局連接請求監聽器
+  final List<void Function(String from, String to)> _connectRequestListeners = [];
 
   List<ChatMessage> get messages => List.unmodifiable(_messages);
   List<ChatRoom> get chatRooms => List.unmodifiable(_chatRooms);
@@ -64,6 +66,10 @@ class ChatService extends ChangeNotifier {
         final fromUser = data['from'];
         final toUser = data['to'];
         debugPrint('[ChatService] 收到 connect_request: from=$fromUser, to=$toUser');
+        // 通知所有全局連接請求監聽器
+        for (var listener in _connectRequestListeners) {
+          listener(fromUser, toUser);
+        }
         notifyListeners();
         break;
       case 'message':
@@ -321,6 +327,25 @@ class ChatService extends ChangeNotifier {
   // 移除連接回應監聽器
   void removeConnectResponseListener(void Function(String from, String to, bool accept) listener) {
     _connectResponseListeners.remove(listener);
+  }
+
+  // 添加連接請求監聽器
+  void addConnectRequestListener(void Function(String from, String to) listener) {
+    _connectRequestListeners.add(listener);
+  }
+  
+  // 移除連接請求監聽器
+  void removeConnectRequestListener(void Function(String from, String to) listener) {
+    _connectRequestListeners.remove(listener);
+  }
+
+  // 觸發連接請求
+  void triggerConnectRequest(String fromUser, String toUser) {
+    // 通知所有全局連接請求監聽器
+    for (var listener in _connectRequestListeners) {
+      listener(fromUser, toUser);
+    }
+    notifyListeners();
   }
 
   @override
