@@ -8,7 +8,9 @@ class UserApiService {
 
   Future<String?> registerUserWithEmail(String email, String password) async {
     try {
-      final uri = Uri.parse('${baseUrl}users/');
+      // 確保 URL 正確拼接，處理有無尾隨斜線的情況
+      final cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
+      final uri = Uri.parse('${cleanBaseUrl}users/');
       final response = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},

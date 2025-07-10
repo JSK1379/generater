@@ -56,7 +56,7 @@ class _AvatarPageState extends State<AvatarPage> {
       final prefs = await SharedPreferences.getInstance();
       final userId = prefs.getString('user_id');
       if (userId != null && userId.isNotEmpty) {
-        const baseUrl = 'https://near-ride-backend-api.onrender.com';
+        const baseUrl = 'https://near-ride-backend-api.onrender.com/';
         final userApi = UserApiService(baseUrl);
         debugPrint('開始上傳頭貼');
         await userApi.uploadAvatar(userId, _base64Image!);
