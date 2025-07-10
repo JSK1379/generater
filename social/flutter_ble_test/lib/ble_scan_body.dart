@@ -19,7 +19,6 @@ class _BleScanBodyState extends State<BleScanBody> {
   bool _isScanning = false;
   BluetoothAdapterState? _btState;
   BluetoothDevice? _connectedDevice;
-  List<BluetoothService> _services = [];
   final Set<int> _expandedIndexes = {};
 
   StreamSubscription<BluetoothAdapterState>? _adapterStateSubscription;
@@ -149,10 +148,7 @@ class _BleScanBodyState extends State<BleScanBody> {
       await device.connect();
       if (!mounted) return;
       setState(() => _connectedDevice = device);
-      _services = await device.discoverServices();
-      if (mounted) {
-        setState(() {});
-      }
+      // 移除服務發現，直接導航到聊天頁面
       if (!mounted) return;
       Navigator.push(
         context,
@@ -224,25 +220,8 @@ class _BleScanBodyState extends State<BleScanBody> {
     if (mounted) {
       setState(() {
         _connectedDevice = null;
-        _services = [];
       });
     }
-  }
-
-  Future<void> _readCharacteristic(BluetoothCharacteristic c) async {
-    var value = await c.read();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('讀取值: $value')),
-    );
-  }
-
-  Future<void> _writeCharacteristic(BluetoothCharacteristic c) async {
-    await c.write([0x01]);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已寫入 0x01')),
-    );
   }
 
   Widget _buildAvatarFromManufacturer(Map<int, List<int>> manufacturerData) {
@@ -325,27 +304,6 @@ class _BleScanBodyState extends State<BleScanBody> {
               onPressed: _disconnect,
               child: const Text('重新配對'),
             ),
-            const Divider(),
-            const Text('服務與特徵值：'),
-            ..._services.expand((s) => s.characteristics.map((c) => ListTile(
-              title: Text('UUID: ${c.uuid}'),
-              subtitle: Text('屬性: ${c.properties}'),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (c.properties.read)
-                    IconButton(
-                      icon: const Icon(Icons.download),
-                      onPressed: () => _readCharacteristic(c),
-                    ),
-                  if (c.properties.write)
-                    IconButton(
-                      icon: const Icon(Icons.upload),
-                      onPressed: () => _writeCharacteristic(c),
-                    ),
-                ],
-              ),
-            ))),
           ],
         )
       else
