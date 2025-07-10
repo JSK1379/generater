@@ -350,10 +350,23 @@ class _BleScanBodyState extends State<BleScanBody> {
                   final r = filteredResults[i];
                   String? nicknameFromManufacturer;
                   final mdata = r.advertisementData.manufacturerData;
-                  if (mdata.containsKey(0x1234)) {
+                  // 先解析 0x1236 (userId 格式)
+                  if (mdata.containsKey(0x1236)) {
+                    final bytes = mdata[0x1236]!;
+                    if (bytes.length > 7 && bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x55) {
+                      try {
+                        final nameLen = bytes[4];
+                        if (bytes.length >= 5 + nameLen) {
+                          final nameBytes = bytes.sublist(5, 5 + nameLen);
+                          nicknameFromManufacturer = utf8.decode(nameBytes, allowMalformed: true);
+                        }
+                      } catch (_) {}
+                    }
+                  }
+                  // fallback 舊格式 0x1234
+                  if ((nicknameFromManufacturer == null || nicknameFromManufacturer.isEmpty) && mdata.containsKey(0x1234)) {
                     final bytes = mdata[0x1234]!;
-                    if (bytes.length > 5 &&
-                        bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x41) {
+                    if (bytes.length > 5 && bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x41) {
                       try {
                         final nameLen = bytes[4];
                         if (bytes.length >= 6 + nameLen) {
@@ -367,7 +380,12 @@ class _BleScanBodyState extends State<BleScanBody> {
                       ? nicknameFromManufacturer!
                       : (r.advertisementData.advName.isNotEmpty ? r.advertisementData.advName : r.device.platformName);
                   bool isSameApp = false;
-                  if (mdata.containsKey(0x1234)) {
+                  if (mdata.containsKey(0x1236)) {
+                    final bytes = mdata[0x1236]!;
+                    if (bytes.length >= 4 && bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x55) {
+                      isSameApp = true;
+                    }
+                  } else if (mdata.containsKey(0x1234)) {
                     final bytes = mdata[0x1234]!;
                     if (bytes.length >= 4 && bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x41) {
                       isSameApp = true;
