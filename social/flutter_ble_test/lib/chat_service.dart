@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'websocket_service.dart';
 import 'chat_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class ChatService extends ChangeNotifier {
   final WebSocketService _webSocketService = WebSocketService();
@@ -307,6 +308,59 @@ class ChatService extends ChangeNotifier {
       });
       debugPrint('[ChatService] 確保用戶已註冊: $userId');
     }
+  }
+
+  // 根據用戶 ID 獲取暱稱
+  Future<String> getUserNickname(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // 如果是當前用戶，返回保存的暱稱
+    if (userId == _currentUser) {
+      return prefs.getString('nickname') ?? userId;
+    }
+    
+    // 從聊天室歷史中查找對方暱稱
+    final historyJson = prefs.getStringList('chat_history') ?? [];
+    for (final jsonStr in historyJson) {
+      try {
+        final data = Map<String, dynamic>.from(jsonDecode(jsonStr));
+        if (data['otherUserId'] == userId && data.containsKey('otherNickname')) {
+          return data['otherNickname'] ?? userId;
+        }
+      } catch (e) {
+        debugPrint('獲取暱稱時出錯: $e');
+      }
+    }
+    
+    // 如果找不到暱稱，返回用戶 ID
+    return userId;
+  }
+
+  // 根據房間 ID 獲取聊天室名稱（"與'對方暱稱'的聊天室"）
+  Future<String> getChatRoomDisplayName(String roomId, String currentUserId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final historyJson = prefs.getStringList('chat_history') ?? [];
+    
+    for (final jsonStr in historyJson) {
+      try {
+        final data = Map<String, dynamic>.from(jsonDecode(jsonStr));
+        if (data['roomId'] == roomId) {
+          final otherUserId = data['otherUserId'] ?? '';
+          final otherNickname = data['otherNickname'] ?? await getUserNickname(otherUserId);
+          return '與\'$otherNickname\'的聊天室';
+        }
+      } catch (e) {
+        debugPrint('獲取聊天室名稱時出錯: $e');
+      }
+    }
+    
+    return '聊天室 $roomId';
+  }
+
+  // 生成房間 ID
+  String generateRoomId(String user1, String user2) {
+    final sortedUsers = [user1, user2]..sort();
+    return 'room_${sortedUsers[0]}_${sortedUsers[1]}';
   }
 
   // 添加連接回應監聽器

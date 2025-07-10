@@ -16,11 +16,13 @@ class ChatRoomListPage extends StatefulWidget {
 class _ChatRoomListPageState extends State<ChatRoomListPage> {
   List<ChatRoomHistory> _chatHistory = [];
   bool _isLoading = true;
+  String _currentUserId = '';
 
   @override
   void initState() {
     super.initState();
     _loadChatHistory();
+    _loadCurrentUserId();
     ChatRoomListPage.refresh = _loadChatHistory;
   }
 
@@ -30,6 +32,16 @@ class _ChatRoomListPageState extends State<ChatRoomListPage> {
       ChatRoomListPage.refresh = null;
     }
     super.dispose();
+  }
+
+  Future<void> _loadCurrentUserId() async {
+    final chatService = ChatServiceSingleton.instance;
+    final userId = await chatService.getCurrentUserId();
+    if (mounted) {
+      setState(() {
+        _currentUserId = userId;
+      });
+    }
   }
 
   Future<void> _loadChatHistory() async {
@@ -192,17 +204,28 @@ class _ChatRoomListPageState extends State<ChatRoomListPage> {
           return ListTile(
             leading: CircleAvatar(
               backgroundColor: Colors.blue.shade100,
-              child: Text(
-                history.roomName.isNotEmpty ? history.roomName[0] : '?',
-                style: TextStyle(
-                  color: Colors.blue.shade800,
-                  fontWeight: FontWeight.bold,
-                ),
+              child: FutureBuilder<String>(
+                future: ChatServiceSingleton.instance.getUserNickname(history.otherUserId),
+                builder: (context, snapshot) {
+                  final nickname = snapshot.data ?? history.otherUserId;
+                  return Text(
+                    nickname.isNotEmpty ? nickname[0] : '?',
+                    style: TextStyle(
+                      color: Colors.blue.shade800,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  );
+                },
               ),
             ),
-            title: Text(
-              history.roomName,
-              style: const TextStyle(fontWeight: FontWeight.w600),
+            title: FutureBuilder<String>(
+              future: ChatServiceSingleton.instance.getChatRoomDisplayName(history.roomId, _currentUserId),
+              builder: (context, snapshot) {
+                return Text(
+                  snapshot.data ?? history.roomName,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                );
+              },
             ),
             subtitle: Text(
               history.lastMessage.isNotEmpty 
@@ -233,6 +256,7 @@ class ChatRoomHistory {
   final String lastMessage;
   final DateTime lastMessageTime;
   final String otherUserId;
+  final String otherNickname;
 
   ChatRoomHistory({
     required this.roomId,
@@ -240,6 +264,7 @@ class ChatRoomHistory {
     required this.lastMessage,
     required this.lastMessageTime,
     required this.otherUserId,
+    this.otherNickname = '',
   });
 
   factory ChatRoomHistory.fromJson(Map<String, dynamic> json) {
@@ -249,6 +274,7 @@ class ChatRoomHistory {
       lastMessage: json['lastMessage'] ?? '',
       lastMessageTime: DateTime.tryParse(json['lastMessageTime'] ?? '') ?? DateTime.now(),
       otherUserId: json['otherUserId'] ?? '',
+      otherNickname: json['otherNickname'] ?? '',
     );
   }
 
@@ -259,6 +285,7 @@ class ChatRoomHistory {
       'lastMessage': lastMessage,
       'lastMessageTime': lastMessageTime.toIso8601String(),
       'otherUserId': otherUserId,
+      'otherNickname': otherNickname,
     };
   }
 }

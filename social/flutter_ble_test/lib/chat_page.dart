@@ -95,7 +95,12 @@ class _ChatPageState extends State<ChatPage> {
       child: Scaffold(
         resizeToAvoidBottomInset: true,
         appBar: AppBar(
-          title: Text(widget.roomName),
+          title: FutureBuilder<String>(
+            future: widget.chatService.getChatRoomDisplayName(widget.roomId, widget.currentUser),
+            builder: (context, snapshot) {
+              return Text(snapshot.data ?? widget.roomName);
+            },
+          ),
           actions: [
             AnimatedBuilder(
               animation: widget.chatService,
@@ -198,13 +203,19 @@ class _ChatPageState extends State<ChatPage> {
             if (!isMe)
               Padding(
                 padding: const EdgeInsets.only(left: 12, bottom: 4),
-                child: Text(
-                  message.sender,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w500,
-                  ),
+                child: FutureBuilder<String>(
+                  future: widget.chatService.getUserNickname(message.sender),
+                  builder: (context, snapshot) {
+                    final displayName = snapshot.data ?? message.sender;
+                    return Text(
+                      displayName,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    );
+                  },
                 ),
               ),
             

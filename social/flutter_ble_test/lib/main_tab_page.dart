@@ -198,13 +198,37 @@ class MainTabPageState extends State<MainTabPage> {
       return data['roomId'] == roomId;
     });
     
+    // 嘗試獲取對方暱稱
+    String otherNickname = '';
+    try {
+      // 從連接對象獲取暱稱
+      final prefs = await SharedPreferences.getInstance();
+      final connectionHistoryJson = prefs.getStringList('connection_history') ?? [];
+      for (final jsonStr in connectionHistoryJson) {
+        final data = jsonDecode(jsonStr);
+        if (data['userId'] == otherUserId && data['nickname'] != null) {
+          otherNickname = data['nickname'];
+          break;
+        }
+      }
+      
+      // 如果連接歷史中沒有找到，使用默認值
+      if (otherNickname.isEmpty) {
+        otherNickname = otherUserId;
+      }
+    } catch (e) {
+      debugPrint('獲取對方暱稱時出錯: $e');
+      otherNickname = otherUserId;
+    }
+    
     if (!exists) {
       final newHistory = {
         'roomId': roomId,
-        'roomName': roomName,
+        'roomName': '與\'$otherNickname\'的聊天室',
         'lastMessage': '',
         'lastMessageTime': DateTime.now().toIso8601String(),
         'otherUserId': otherUserId,
+        'otherNickname': otherNickname,
       };
       historyJson.add(jsonEncode(newHistory));
       await prefs.setStringList('chat_history', historyJson);
@@ -244,34 +268,25 @@ class MainTabPageState extends State<MainTabPage> {
       // 先檢查是否還掛載
       if (!mounted) return;
       
-      final historyJson = prefs.getStringList('chat_history') ?? [];
-      String roomName = '聊天室';
+      final chatService = ChatServiceSingleton.instance;
       
-      // 嘗試從歷史紀錄中找到匹配的聊天室
-      for (final jsonStr in historyJson) {
-        try {
-          final data = jsonDecode(jsonStr);
-          if (data['roomId'] == roomId && data['roomName'] != null) {
-            roomName = data['roomName'];
-            break;
-          }
-        } catch (e) {
-          debugPrint('[MainTabPage] 解析聊天室歷史時出錯: $e');
-        }
-      }
-      
-      // 使用找到的房間名稱進行導航
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ChatPage(
-            roomId: roomId,
-            roomName: roomName,
-            currentUser: currentUserId,
-            chatService: ChatServiceSingleton.instance,
+      // 使用 ChatService 的方法取得聊天室顯示名稱
+      chatService.getChatRoomDisplayName(roomId, currentUserId).then((roomName) {
+        // 檢查 widget 是否仍然掛載
+        if (!mounted) return;
+        
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ChatPage(
+              roomId: roomId,
+              roomName: roomName,
+              currentUser: currentUserId,
+              chatService: chatService,
+            ),
           ),
-        ),
-      );
+        );
+      });
     });
   }
 }
