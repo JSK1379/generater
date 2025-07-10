@@ -17,13 +17,8 @@ class TestTab extends StatefulWidget {
 }
 
 class _TestTabState extends State<TestTab> {
-  /// 連接後自動發送連接要求並創建聊天室
-  Future<void> _connectAndCreateRoom(BuildContext context) async {
-    if (!context.mounted) return;
-    await _sendConnectRequest(context);
-    if (!context.mounted) return;
-    await _createRoom(context);
-  }
+  String? _pendingJoinRoomId;
+  final TextEditingController _targetUserIdController = TextEditingController(text: kTestTargetUserId);
   String _wsLog = '';
   String _currentUserId = 'unknown_user';
   bool _disposed = false;
@@ -34,6 +29,22 @@ class _TestTabState extends State<TestTab> {
     ChatServiceSingleton.instance.webSocketService.addMessageListener(_onWsMessage);
     _loadCurrentUserId();
     _disposed = false;
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    ChatServiceSingleton.instance.webSocketService.removeMessageListener(_onWsMessage);
+    _targetUserIdController.dispose();
+    super.dispose();
+  }
+
+  /// 連接後自動發送連接要求並創建聊天室
+  Future<void> _connectAndCreateRoom(BuildContext context) async {
+    if (!context.mounted) return;
+    await _sendConnectRequest(context);
+    if (!context.mounted) return;
+    await _createRoom(context);
   }
 
   Future<void> _loadCurrentUserId() async {
@@ -47,11 +58,40 @@ class _TestTabState extends State<TestTab> {
     }
   }
 
+  void _enterChatRoom(String roomId, String roomName) {
+    final chatService = ChatServiceSingleton.instance;
+    final myUserId = _currentUserId;
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatPage(
+          roomId: roomId,
+          roomName: roomName,
+          currentUser: myUserId,
+          chatService: chatService,
+        ),
+      ),
+    );
+  }
+
   void _onWsMessage(Map<String, dynamic> data) {
     if (mounted && !_disposed) {
       setState(() {
         _wsLog = data.toString();
       });
+      // 自動進入聊天室（收到 joined_room 訊息）
+      if (data['type'] == 'joined_room' && data['roomId'] != null) {
+        final roomId = data['roomId'] as String;
+        if (_pendingJoinRoomId == roomId) {
+          _pendingJoinRoomId = null;
+          _enterChatRoom(roomId, data['roomName'] ?? '聊天室');
+        }
+      }
+      // 若收到 connect_response 且 accept==true 並有 roomId，記錄待進入房間
+      if (data['type'] == 'connect_response' && data['accept'] == true && data['roomId'] != null) {
+        _pendingJoinRoomId = data['roomId'] as String;
+      }
     }
   }
 
@@ -59,16 +99,24 @@ class _TestTabState extends State<TestTab> {
     final prefs = await SharedPreferences.getInstance();
     final myUserId = prefs.getString('user_id') ?? 'unknown_user';
     final chatService = ChatServiceSingleton.instance;
+    final targetUserId = _targetUserIdController.text.trim();
+    if (targetUserId.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('請輸入目標 userId')),
+        );
+      }
+      return;
+    }
     if (!chatService.isConnected) {
       await chatService.connectAndRegister(kTestWsServerUrl, 'test_room', myUserId);
     } else {
-      // 確保用戶已註冊
       chatService.ensureUserRegistered(myUserId);
     }
-    chatService.sendConnectRequest(myUserId, kTestTargetUserId);
+    chatService.sendConnectRequest(myUserId, targetUserId);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已發送連接要求給 0000')),
+      SnackBar(content: Text('已發送連接要求給 $targetUserId')),
     );
   }
 
@@ -216,7 +264,7 @@ class _TestTabState extends State<TestTab> {
     }
   }
 
-  static Future<Map<String, String>?> _showEmailPasswordDialog(BuildContext context) async {
+  Future<Map<String, String>?> _showEmailPasswordDialog(BuildContext context) async {
     final emailController = TextEditingController();
     final passwordController = TextEditingController();
     
@@ -266,7 +314,7 @@ class _TestTabState extends State<TestTab> {
     );
   }
 
-  static Future<String?> _showInputDialog(BuildContext context, String title, [String? initialValue]) async {
+  Future<String?> _showInputDialog(BuildContext context, String title, [String? initialValue]) async {
     final controller = TextEditingController(text: initialValue ?? '');
     return showDialog<String>(
       context: context,
@@ -314,9 +362,21 @@ class _TestTabState extends State<TestTab> {
               ),
               child: Text(_wsLog, maxLines: 6, overflow: TextOverflow.ellipsis),
             ),
-            ElevatedButton(
-              onPressed: () => _sendConnectRequest(context),
-              child: const Text('創建連接要求（對 0000）'),
+            Row(
+              children: [
+                const Text('目標 userId: '),
+                Expanded(
+                  child: TextField(
+                    controller: _targetUserIdController,
+                    decoration: const InputDecoration(hintText: '請輸入目標 userId'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () => _sendConnectRequest(context),
+                  child: const Text('發送連接要求'),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             ElevatedButton(
@@ -341,12 +401,5 @@ class _TestTabState extends State<TestTab> {
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _disposed = true;
-    ChatServiceSingleton.instance.webSocketService.removeMessageListener(_onWsMessage);
-    super.dispose();
   }
 }
