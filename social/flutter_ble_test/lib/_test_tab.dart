@@ -27,6 +27,8 @@ class _TestTabState extends State<TestTab> {
   void initState() {
     super.initState();
     ChatServiceSingleton.instance.webSocketService.addMessageListener(_onWsMessage);
+    // 添加連接回應監聽器
+    ChatServiceSingleton.instance.addConnectResponseListener(_onConnectResponse);
     _loadCurrentUserId();
     _disposed = false;
   }
@@ -35,6 +37,7 @@ class _TestTabState extends State<TestTab> {
   void dispose() {
     _disposed = true;
     ChatServiceSingleton.instance.webSocketService.removeMessageListener(_onWsMessage);
+    ChatServiceSingleton.instance.removeConnectResponseListener(_onConnectResponse);
     _targetUserIdController.dispose();
     super.dispose();
   }
@@ -92,6 +95,30 @@ class _TestTabState extends State<TestTab> {
       if (data['type'] == 'connect_response' && data['accept'] == true && data['roomId'] != null) {
         _pendingJoinRoomId = data['roomId'] as String;
       }
+    }
+  }
+
+  // 處理連接回應
+  void _onConnectResponse(String from, String to, bool accept) {
+    if (!mounted || _disposed) return;
+    
+    // 只處理回應給自己的消息（我是接收方）
+    if (to != _currentUserId) return;
+    
+    // 如果被拒絕，顯示提示
+    if (!accept) {
+      // 使用安全的方式顯示 UI
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('你好像被拒絕了;;', style: TextStyle(fontSize: 16)),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      });
     }
   }
 

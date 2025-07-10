@@ -20,6 +20,7 @@ class _BleScanBodyState extends State<BleScanBody> {
   BluetoothAdapterState? _btState;
   BluetoothDevice? _connectedDevice;
   final Set<int> _expandedIndexes = {};
+  String _currentUserId = ''; // 新增當前用戶 ID 變數
 
   StreamSubscription<BluetoothAdapterState>? _adapterStateSubscription;
   StreamSubscription<List<ScanResult>>? _scanResultsSubscription;
@@ -27,6 +28,9 @@ class _BleScanBodyState extends State<BleScanBody> {
   @override
   void initState() {
     super.initState();
+    _loadCurrentUserId(); // 載入當前用戶 ID
+    // 添加連接回應監聽器
+    ChatServiceSingleton.instance.addConnectResponseListener(_onConnectResponse);
     _requestPermissions().then((_) {
       _adapterStateSubscription = FlutterBluePlus.adapterState.listen((s) {
         if (mounted) {
@@ -49,6 +53,8 @@ class _BleScanBodyState extends State<BleScanBody> {
     _adapterStateSubscription?.cancel();
     _scanResultsSubscription?.cancel();
     _connectedDevice?.disconnect();
+    // 移除連接回應監聽器
+    ChatServiceSingleton.instance.removeConnectResponseListener(_onConnectResponse);
     super.dispose();
   }
 
@@ -299,6 +305,40 @@ class _BleScanBodyState extends State<BleScanBody> {
       };
       historyJson.add(jsonEncode(newHistory));
       await prefs.setStringList('chat_history', historyJson);
+    }
+  }
+
+  // 載入當前用戶 ID
+  Future<void> _loadCurrentUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('user_id') ?? 'unknown_user';
+    if (!mounted) return;
+    setState(() {
+      _currentUserId = userId;
+    });
+  }
+
+  // 處理連接回應
+  void _onConnectResponse(String from, String to, bool accept) {
+    if (!mounted) return;
+    
+    // 只處理回應給自己的消息（我是接收方）
+    if (to != _currentUserId) return;
+    
+    // 如果被拒絕，顯示提示
+    if (!accept) {
+      // 使用安全的方式顯示 UI
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('你好像被拒绝了; ;', style: TextStyle(fontSize: 16)),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      });
     }
   }
 

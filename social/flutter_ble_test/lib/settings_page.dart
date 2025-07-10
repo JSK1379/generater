@@ -157,11 +157,17 @@ class _SettingsPageState extends State<SettingsPage> {
 
     debugPrint('[SettingsPage] Connection dialog result: $result');
     if (!mounted) return;
+    
+    // 用戶做出了選擇，先向服務器發送 connect_response
+    final chatService = ChatServiceSingleton.instance;
+    final currentUserId = await chatService.getCurrentUserId();
+    final roomId = chatService.generateRoomId(currentUserId, deviceId);
+    
+    // 發送接受/拒絕的回應給服務器
+    chatService.sendConnectResponse(currentUserId, deviceId, result == true, result == true ? roomId : null);
+    
     if (result == true) {
       // 用戶接受連接，開啟聊天室
-      final chatService = ChatServiceSingleton.instance;
-      final currentUserId = await chatService.getCurrentUserId();
-      final roomId = chatService.generateRoomId(currentUserId, deviceId);
       
       // 儲存聊天室歷史
       await _saveChatRoomHistory(roomId, '與 $nickname 的聊天', deviceId);

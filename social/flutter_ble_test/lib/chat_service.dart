@@ -14,6 +14,9 @@ class ChatService extends ChangeNotifier {
   ChatRoom? _currentRoom;
   bool _isConnected = false;
   String _currentUser = '';
+  
+  // 連接請求回調監聽器
+  final List<void Function(String from, String to, bool accept)> _connectResponseListeners = [];
 
   List<ChatMessage> get messages => List.unmodifiable(_messages);
   List<ChatRoom> get chatRooms => List.unmodifiable(_chatRooms);
@@ -56,6 +59,13 @@ class ChatService extends ChangeNotifier {
     final messageType = data['type'];
     
     switch (messageType) {
+      case 'connect_request':
+        // 處理連接請求
+        final fromUser = data['from'];
+        final toUser = data['to'];
+        debugPrint('[ChatService] 收到 connect_request: from=$fromUser, to=$toUser');
+        notifyListeners();
+        break;
       case 'message':
         // 處理聊天訊息，添加防重複機制
         final messageId = data['id'] ?? 'msg_${DateTime.now().millisecondsSinceEpoch}';
@@ -114,6 +124,10 @@ class ChatService extends ChangeNotifier {
           // 自動加入聊天室
           joinRoom(roomId);
           debugPrint('[ChatService] 自動 join_room: $roomId');
+        }
+        // 通知所有監聽器
+        for (var listener in _connectResponseListeners) {
+          listener(fromUser, toUser, accept);
         }
         notifyListeners();
         break;
@@ -247,6 +261,24 @@ class ChatService extends ChangeNotifier {
     });
     debugPrint('[ChatService] Sent connect_request from: $fromUserId to: $toUserId');
   }
+  
+  // 發送連接回應
+  void sendConnectResponse(String fromUserId, String toUserId, bool accept, [String? roomId]) {
+    final message = {
+      'type': 'connect_response',
+      'from': fromUserId,
+      'to': toUserId,
+      'accept': accept,
+    };
+    
+    // 如果提供了 roomId 且接受連接，則添加到訊息中
+    if (roomId != null && accept) {
+      message['roomId'] = roomId;
+    }
+    
+    _webSocketService.sendMessage(message);
+    debugPrint('[ChatService] Sent connect_response: from=$fromUserId to=$toUserId accept=$accept roomId=${roomId ?? "null"}');
+  }
 
   // 刪除聊天室
   void deleteRoom(String roomId) {
@@ -279,6 +311,16 @@ class ChatService extends ChangeNotifier {
       });
       debugPrint('[ChatService] 確保用戶已註冊: $userId');
     }
+  }
+
+  // 添加連接回應監聽器
+  void addConnectResponseListener(void Function(String from, String to, bool accept) listener) {
+    _connectResponseListeners.add(listener);
+  }
+  
+  // 移除連接回應監聽器
+  void removeConnectResponseListener(void Function(String from, String to, bool accept) listener) {
+    _connectResponseListeners.remove(listener);
   }
 
   @override
