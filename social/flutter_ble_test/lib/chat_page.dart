@@ -93,6 +93,7 @@ class _ChatPageState extends State<ChatPage> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
+        resizeToAvoidBottomInset: true,
         appBar: AppBar(
           title: Text(widget.roomName),
           actions: [
@@ -108,16 +109,17 @@ class _ChatPageState extends State<ChatPage> {
             const SizedBox(width: 16),
           ],
         ),
-        body: Column(
-          children: [
-            // 訊息列表
-            Expanded(
-              child: AnimatedBuilder(
-                animation: widget.chatService,
-                builder: (context, child) {
-                  if (widget.chatService.messages.isEmpty) {
-                    return const Center(
-                      child: Text('目前沒有訊息，開始聊天吧！'),
+        body: SafeArea(
+          child: Column(
+            children: [
+              // 訊息列表
+              Expanded(
+                child: AnimatedBuilder(
+                  animation: widget.chatService,
+                  builder: (context, child) {
+                    if (widget.chatService.messages.isEmpty) {
+                      return const Center(
+                        child: Text('目前沒有訊息，開始聊天吧！'),
                     );
                   }
                   
@@ -138,7 +140,12 @@ class _ChatPageState extends State<ChatPage> {
             
             // 輸入框
             Container(
-              padding: const EdgeInsets.all(8.0),
+              padding: EdgeInsets.fromLTRB(
+                8.0,
+                8.0,
+                8.0,
+                8.0 + MediaQuery.of(context).viewInsets.bottom,
+              ),
               decoration: BoxDecoration(
                 color: Theme.of(context).scaffoldBackgroundColor,
                 border: Border(
@@ -172,6 +179,7 @@ class _ChatPageState extends State<ChatPage> {
               ),
             ),
           ],
+        ),
         ),
       ),
     );
