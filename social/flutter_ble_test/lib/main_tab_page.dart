@@ -228,21 +228,33 @@ class MainTabPageState extends State<MainTabPage> {
       final roomId = data['roomId'] as String;
       final prefs = await SharedPreferences.getInstance();
       final currentUserId = prefs.getString('user_id') ?? 'unknown_user';
-      // 自動跳轉聊天室
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ChatPage(
-              roomId: roomId,
-              roomName: '聊天室 $roomId',
-              currentUser: currentUserId,
-              chatService: ChatServiceSingleton.instance,
-            ),
-          ),
-        );
+      
+      // 在獲取異步數據後立即檢查 mounted
+      if (!mounted) return;
+      
+      // 自動跳轉聊天室 - 無async gap後使用context
+      _navigateToChatPage(roomId, currentUserId);
+      
+      // 通知聊天室分頁刷新
+      if (ChatRoomListPage.refresh != null) {
+        ChatRoomListPage.refresh!();
       }
     }
+  }
+  
+  // 拆分為同步方法，避免 async gap
+  void _navigateToChatPage(String roomId, String currentUserId) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatPage(
+          roomId: roomId,
+          roomName: '聊天室 $roomId',
+          currentUser: currentUserId,
+          chatService: ChatServiceSingleton.instance,
+        ),
+      ),
+    );
   }
 }
 

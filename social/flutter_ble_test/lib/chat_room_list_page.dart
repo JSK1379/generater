@@ -7,6 +7,8 @@ import 'chat_page.dart';
 class ChatRoomListPage extends StatefulWidget {
   const ChatRoomListPage({super.key});
 
+  static void Function()? refresh;
+
   @override
   State<ChatRoomListPage> createState() => _ChatRoomListPageState();
 }
@@ -19,6 +21,15 @@ class _ChatRoomListPageState extends State<ChatRoomListPage> {
   void initState() {
     super.initState();
     _loadChatHistory();
+    ChatRoomListPage.refresh = _loadChatHistory;
+  }
+
+  @override
+  void dispose() {
+    if (ChatRoomListPage.refresh == _loadChatHistory) {
+      ChatRoomListPage.refresh = null;
+    }
+    super.dispose();
   }
 
   Future<void> _loadChatHistory() async {
