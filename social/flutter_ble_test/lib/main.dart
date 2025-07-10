@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'main_tab_page.dart';
-import 'user_id_setup_page.dart';
+// import 'user_id_setup_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'chat_service_singleton.dart';
 
@@ -17,7 +17,7 @@ class MyApp extends StatelessWidget {
       home: const AppInitializer(),
       routes: {
         '/main': (context) => const MainTabPage(),
-        '/setup': (context) => const UserIdSetupPage(),
+        // '/setup': (context) => const UserIdSetupPage(),
       },
     );
   }
