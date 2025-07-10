@@ -8,8 +8,8 @@ import 'dart:typed_data';
 import 'settings_ble_helper.dart';
 import '_test_tab.dart';
 import 'chat_service_singleton.dart';
-import 'chat_page.dart'; // 添加 chat_page.dart 導入
-import 'dart:convert'; // 添加 dart:convert 導入
+import 'chat_page.dart';
+import 'dart:convert';
 
 class MainTabPage extends StatefulWidget {
   const MainTabPage({super.key});
@@ -29,12 +29,16 @@ class MainTabPageState extends State<MainTabPage> {
     _loadNicknameFromPrefs();
     // 添加全局連接請求監聽器
     ChatServiceSingleton.instance.addConnectRequestListener(_handleConnectRequest);
+    // 添加全局聊天室加入監聽器
+    ChatServiceSingleton.instance.webSocketService.addMessageListener(_onWsMessage);
   }
 
   @override
   void dispose() {
     // 移除全局連接請求監聽器
     ChatServiceSingleton.instance.removeConnectRequestListener(_handleConnectRequest);
+    // 移除全局聊天室加入監聽器
+    ChatServiceSingleton.instance.webSocketService.removeMessageListener(_onWsMessage);
     super.dispose();
   }
 
@@ -216,6 +220,28 @@ class MainTabPageState extends State<MainTabPage> {
       };
       historyJson.add(jsonEncode(newHistory));
       await prefs.setStringList('chat_history', historyJson);
+    }
+  }
+
+  void _onWsMessage(Map<String, dynamic> data) async {
+    if (data['type'] == 'joined_room' && data['roomId'] != null) {
+      final roomId = data['roomId'] as String;
+      final prefs = await SharedPreferences.getInstance();
+      final currentUserId = prefs.getString('user_id') ?? 'unknown_user';
+      // 自動跳轉聊天室
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ChatPage(
+              roomId: roomId,
+              roomName: '聊天室 $roomId',
+              currentUser: currentUserId,
+              chatService: ChatServiceSingleton.instance,
+            ),
+          ),
+        );
+      }
     }
   }
 }

@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:async';
 import 'chat_service_singleton.dart';
-// ...existing code...
+import 'chat_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class BleScanBody extends StatefulWidget {
@@ -270,18 +270,35 @@ class _BleScanBodyState extends State<BleScanBody> {
   // 處理連接回應
   void _onConnectResponse(String from, String to, bool accept) {
     if (!mounted) return;
-    
     // 只處理回應給自己的消息（我是接收方）
     if (to != _currentUserId) return;
-    
-    // 如果被拒絕，顯示提示
-    if (!accept) {
-      // 使用安全的方式顯示 UI
+
+    if (accept) {
+      // 自動跳轉聊天室
+      final chatService = ChatServiceSingleton.instance;
+      final roomId = chatService.generateRoomId(_currentUserId, from);
+      final roomName = '與 $from 的聊天';
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ChatPage(
+              roomId: roomId,
+              roomName: roomName,
+              currentUser: _currentUserId,
+              chatService: chatService,
+            ),
+          ),
+        );
+      });
+    } else {
+      // 如果被拒絕，顯示提示
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('你好像被拒绝了; ;', style: TextStyle(fontSize: 16)),
+              content: Text('你好像被拒絕了;;', style: TextStyle(fontSize: 16)),
               backgroundColor: Colors.red,
               duration: Duration(seconds: 3),
             ),
