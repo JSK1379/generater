@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import 'chat_service_singleton.dart';
 import 'chat_page.dart';
 import 'user_api_service.dart';
@@ -73,6 +74,10 @@ class _TestTabState extends State<TestTab> {
     String joinMsg = '';
     if (roomId != null) {
       debugPrint('[TestTab] roomId 不為 null，準備 joinRoom');
+      
+      // 保存聊天室歷史（使用目標用戶 ID）
+      await _saveChatRoomHistory(roomId, roomName, kTestTargetUserId);
+      
       // 先導航到聊天室頁面，然後在背景執行 joinRoom
       debugPrint('[TestTab] 準備導航到 ChatPage');
       if (!context.mounted) return;
@@ -167,6 +172,30 @@ class _TestTabState extends State<TestTab> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('註冊出錯，請檢查網路連線')),
       );
+    }
+  }
+
+  Future<void> _saveChatRoomHistory(String roomId, String roomName, String otherUserId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final historyJson = prefs.getStringList('chat_history') ?? [];
+    
+    // 檢查是否已存在
+    final exists = historyJson.any((jsonStr) {
+      final data = jsonDecode(jsonStr);
+      return data['roomId'] == roomId;
+    });
+    
+    if (!exists) {
+      final newHistory = {
+        'roomId': roomId,
+        'roomName': roomName,
+        'lastMessage': '',
+        'lastMessageTime': DateTime.now().toIso8601String(),
+        'otherUserId': otherUserId,
+      };
+      historyJson.add(jsonEncode(newHistory));
+      await prefs.setStringList('chat_history', historyJson);
+      debugPrint('[TestTab] 已保存聊天室歷史: $roomName ($roomId)');
     }
   }
 
