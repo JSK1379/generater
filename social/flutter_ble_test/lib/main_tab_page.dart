@@ -167,29 +167,17 @@ class MainTabPageState extends State<MainTabPage> {
     
     // 用戶做出了選擇，發送 connect_response
     final chatService = ChatServiceSingleton.instance;
-    final roomId = chatService.generateRoomId(currentUserId, fromUserId);
     
-    // 發送接受/拒絕的回應給服務器
-    chatService.sendConnectResponse(currentUserId, fromUserId, result == true, result == true ? roomId : null);
+    // 發送接受/拒絕的回應給服務器 (roomId 由伺服器產生)
+    chatService.sendConnectResponse(currentUserId, fromUserId, result == true);
     
     if (result == true) {
-      // 用戶接受連接，創建並進入聊天室
-      
-      // 儲存聊天室歷史
-      await _saveChatRoomHistory(roomId, '與 $fromUserId 的聊天', fromUserId);
-      
-      if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ChatPage(
-            roomId: roomId,
-            roomName: '與 $fromUserId 的聊天',
-            currentUser: currentUserId,
-            chatService: chatService,
-          ),
-        ),
-      );
+      // 用戶接受連接，不再自動創建聊天室，由 joined_room 事件處理
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已接受連接請求，等待伺服器建立聊天室...')),
+        );
+      }
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -229,6 +217,13 @@ class MainTabPageState extends State<MainTabPage> {
       final prefs = await SharedPreferences.getInstance();
       final currentUserId = prefs.getString('user_id') ?? 'unknown_user';
       
+      // 取得聊天室名稱和對方 ID
+      final roomName = data['roomName'] ?? '聊天室 $roomId';
+      final otherUserId = data['otherUserId'] ?? (data['from'] ?? '未知用戶');
+      
+      // 儲存聊天室歷史
+      await _saveChatRoomHistory(roomId, roomName, otherUserId);
+      
       // 在獲取異步數據後立即檢查 mounted
       if (!mounted) return;
       
@@ -244,17 +239,40 @@ class MainTabPageState extends State<MainTabPage> {
   
   // 拆分為同步方法，避免 async gap
   void _navigateToChatPage(String roomId, String currentUserId) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ChatPage(
-          roomId: roomId,
-          roomName: '聊天室 $roomId',
-          currentUser: currentUserId,
-          chatService: ChatServiceSingleton.instance,
+    // 從歷史紀錄中取得聊天室名稱
+    SharedPreferences.getInstance().then((prefs) {
+      // 先檢查是否還掛載
+      if (!mounted) return;
+      
+      final historyJson = prefs.getStringList('chat_history') ?? [];
+      String roomName = '聊天室';
+      
+      // 嘗試從歷史紀錄中找到匹配的聊天室
+      for (final jsonStr in historyJson) {
+        try {
+          final data = jsonDecode(jsonStr);
+          if (data['roomId'] == roomId && data['roomName'] != null) {
+            roomName = data['roomName'];
+            break;
+          }
+        } catch (e) {
+          debugPrint('[MainTabPage] 解析聊天室歷史時出錯: $e');
+        }
+      }
+      
+      // 使用找到的房間名稱進行導航
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ChatPage(
+            roomId: roomId,
+            roomName: roomName,
+            currentUser: currentUserId,
+            chatService: ChatServiceSingleton.instance,
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 }
 

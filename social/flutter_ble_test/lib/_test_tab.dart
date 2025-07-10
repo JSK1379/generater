@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
 import 'chat_service_singleton.dart';
-import 'chat_page.dart';
 import 'user_api_service.dart';
 
 const String kTestWsServerUrl = 'wss://near-ride-backend-api.onrender.com/ws';
@@ -17,7 +15,6 @@ class TestTab extends StatefulWidget {
 }
 
 class _TestTabState extends State<TestTab> {
-  String? _pendingJoinRoomId;
   final TextEditingController _targetUserIdController = TextEditingController(text: kTestTargetUserId);
   String _wsLog = '';
   String _currentUserId = 'unknown_user';
@@ -61,39 +58,20 @@ class _TestTabState extends State<TestTab> {
     }
   }
 
-  void _enterChatRoom(String roomId, String roomName) {
-    final chatService = ChatServiceSingleton.instance;
-    final myUserId = _currentUserId;
-    if (!mounted) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ChatPage(
-          roomId: roomId,
-          roomName: roomName,
-          currentUser: myUserId,
-          chatService: chatService,
-        ),
-      ),
-    );
-  }
-
   void _onWsMessage(Map<String, dynamic> data) {
     if (mounted && !_disposed) {
       setState(() {
         _wsLog = data.toString();
       });
-      // 自動進入聊天室（收到 joined_room 訊息）
-      if (data['type'] == 'joined_room' && data['roomId'] != null) {
-        final roomId = data['roomId'] as String;
-        if (_pendingJoinRoomId == roomId) {
-          _pendingJoinRoomId = null;
-          _enterChatRoom(roomId, data['roomName'] ?? '聊天室');
-        }
-      }
-      // 若收到 connect_response 且 accept==true 並有 roomId，記錄待進入房間
-      if (data['type'] == 'connect_response' && data['accept'] == true && data['roomId'] != null) {
-        _pendingJoinRoomId = data['roomId'] as String;
+      // 不再處理 joined_room 事件，改為僅更新日誌顯示
+      // 所有聊天室跳轉都由 MainTabPage 統一處理
+      
+      // 記錄 connect_response 供調試使用
+      if (data['type'] == 'connect_response') {
+        final accept = data['accept'];
+        final from = data['from'];
+        final to = data['to'];
+        debugPrint('[TestTab] 收到 connect_response: from=$from, to=$to, accept=$accept');
       }
     }
   }
@@ -165,27 +143,9 @@ class _TestTabState extends State<TestTab> {
     if (roomId != null) {
       debugPrint('[TestTab] roomId 不為 null，準備 joinRoom');
       
-      // 保存聊天室歷史（使用目標用戶 ID）
-      await _saveChatRoomHistory(roomId, roomName, kTestTargetUserId);
+      // 不再保存聊天室歷史，由 joined_room 事件處理
       
-      // 先導航到聊天室頁面，然後在背景執行 joinRoom
-      debugPrint('[TestTab] 準備導航到 ChatPage');
-      if (!context.mounted) return;
-      debugPrint('[TestTab] context.mounted 通過，開始導航');
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ChatPage(
-            roomId: roomId,
-            roomName: roomName,
-            currentUser: myUserId,
-            chatService: chatService,
-          ),
-        ),
-      );
-      debugPrint('[TestTab] Navigator.push 已執行');
-      
-      // 在背景執行 joinRoom
+      // 先發送 joinRoom 請求
       chatService.joinRoom(roomId).then((_) {
         debugPrint('[TestTab] joinRoom 完成');
       });
@@ -267,29 +227,7 @@ class _TestTabState extends State<TestTab> {
     }
   }
 
-  Future<void> _saveChatRoomHistory(String roomId, String roomName, String otherUserId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final historyJson = prefs.getStringList('chat_history') ?? [];
-    
-    // 檢查是否已存在
-    final exists = historyJson.any((jsonStr) {
-      final data = jsonDecode(jsonStr);
-      return data['roomId'] == roomId;
-    });
-    
-    if (!exists) {
-      final newHistory = {
-        'roomId': roomId,
-        'roomName': roomName,
-        'lastMessage': '',
-        'lastMessageTime': DateTime.now().toIso8601String(),
-        'otherUserId': otherUserId,
-      };
-      historyJson.add(jsonEncode(newHistory));
-      await prefs.setStringList('chat_history', historyJson);
-      debugPrint('[TestTab] 已保存聊天室歷史: $roomName ($roomId)');
-    }
-  }
+  // _saveChatRoomHistory 方法已移除，因為沒有被使用
 
   Future<Map<String, String>?> _showEmailPasswordDialog(BuildContext context) async {
     final emailController = TextEditingController();

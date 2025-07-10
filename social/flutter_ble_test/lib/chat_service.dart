@@ -126,6 +126,7 @@ class ChatService extends ChangeNotifier {
         final accept = data['accept'];
         final roomId = data['roomId'];
         debugPrint('[ChatService] 收到 connect_response: from=$fromUser, to=$toUser, accept=$accept, roomId=$roomId');
+        // 若接受連接且服務器返回了 roomId，則自動加入聊天室
         if (accept == true && roomId != null && roomId is String && !_joinedRooms.contains(roomId)) {
           // 自動加入聊天室
           joinRoom(roomId);
@@ -269,7 +270,7 @@ class ChatService extends ChangeNotifier {
   }
   
   // 發送連接回應
-  void sendConnectResponse(String fromUserId, String toUserId, bool accept, [String? roomId]) {
+  void sendConnectResponse(String fromUserId, String toUserId, bool accept) {
     final message = {
       'type': 'connect_response',
       'from': fromUserId,
@@ -277,13 +278,8 @@ class ChatService extends ChangeNotifier {
       'accept': accept,
     };
     
-    // 如果提供了 roomId 且接受連接，則添加到訊息中
-    if (roomId != null && accept) {
-      message['roomId'] = roomId;
-    }
-    
     _webSocketService.sendMessage(message);
-    debugPrint('[ChatService] Sent connect_response: from=$fromUserId to=$toUserId accept=$accept roomId=${roomId ?? "null"}');
+    debugPrint('[ChatService] Sent connect_response: from=$fromUserId to=$toUserId accept=$accept');
   }
 
   // 刪除聊天室
@@ -294,12 +290,6 @@ class ChatService extends ChangeNotifier {
       'user': _currentUser,
     });
     debugPrint('[ChatService] Sent delete_room for: $roomId');
-  }
-
-  // 生成房間 ID（根據兩個用戶 ID）
-  String generateRoomId(String userId1, String userId2) {
-    final sortedUsers = [userId1, userId2]..sort();
-    return 'room_${sortedUsers[0]}_${sortedUsers[1]}';
   }
 
   // 取得當前用戶 ID

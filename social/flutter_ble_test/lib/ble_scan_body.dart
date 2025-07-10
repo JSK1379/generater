@@ -5,7 +5,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:async';
 import 'chat_service_singleton.dart';
-import 'chat_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class BleScanBody extends StatefulWidget {
@@ -274,24 +273,8 @@ class _BleScanBodyState extends State<BleScanBody> {
     if (to != _currentUserId) return;
 
     if (accept) {
-      // 自動跳轉聊天室
-      final chatService = ChatServiceSingleton.instance;
-      final roomId = chatService.generateRoomId(_currentUserId, from);
-      final roomName = '與 $from 的聊天';
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        if (!mounted) return;
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ChatPage(
-              roomId: roomId,
-              roomName: roomName,
-              currentUser: _currentUserId,
-              chatService: chatService,
-            ),
-          ),
-        );
-      });
+      // 不再自動跳轉聊天室，由 joined_room 事件處理
+      // roomId 將由伺服器產生，並通過 joined_room 事件傳遞
     } else {
       // 如果被拒絕，顯示提示
       WidgetsBinding.instance.addPostFrameCallback((_) {
