@@ -10,6 +10,7 @@ class ChatService extends ChangeNotifier {
   final List<ChatMessage> _messages = [];
   final List<ChatRoom> _chatRooms = [];
   final Set<String> _joinedRooms = <String>{}; // 已加入的房間列表
+  final Set<String> _processedMessages = <String>{}; // 已處理的訊息 ID 列表
   ChatRoom? _currentRoom;
   bool _isConnected = false;
   String _currentUser = '';
@@ -56,9 +57,17 @@ class ChatService extends ChangeNotifier {
     
     switch (messageType) {
       case 'message':
-        // 處理聊天訊息，使用您提供的格式
+        // 處理聊天訊息，添加防重複機制
+        final messageId = data['id'] ?? 'msg_${DateTime.now().millisecondsSinceEpoch}';
+        
+        // 防重複：檢查是否已處理過此訊息
+        if (_processedMessages.contains(messageId)) {
+          debugPrint('ChatService: 訊息 $messageId 已處理過，跳過重複處理');
+          break;
+        }
+        
         final message = ChatMessage(
-          id: data['id'] ?? 'msg_${DateTime.now().millisecondsSinceEpoch}',
+          id: messageId,
           type: 'text',
           content: data['content'] ?? '', // 使用 content 欄位
           sender: data['sender'] ?? '',
@@ -66,6 +75,7 @@ class ChatService extends ChangeNotifier {
           imageUrl: data['imageUrl'],
         );
         _messages.add(message);
+        _processedMessages.add(messageId); // 記錄已處理的訊息
         debugPrint('ChatService: 新增聊天訊息 - ${message.content}');
         notifyListeners();
         break;
