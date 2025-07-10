@@ -19,25 +19,31 @@ class TestTab extends StatefulWidget {
 class _TestTabState extends State<TestTab> {
   String _wsLog = '';
   String _currentUserId = 'unknown_user';
+  bool _disposed = false;
 
   @override
   void initState() {
     super.initState();
     ChatServiceSingleton.instance.webSocketService.addMessageListener(_onWsMessage);
     _loadCurrentUserId();
+    _disposed = false;
   }
 
   Future<void> _loadCurrentUserId() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _currentUserId = prefs.getString('user_id') ?? 'unknown_user';
-    });
+    if (mounted && !_disposed) {
+      setState(() {
+        _currentUserId = prefs.getString('user_id') ?? 'unknown_user';
+      });
+    }
   }
 
   void _onWsMessage(Map<String, dynamic> data) {
-    setState(() {
-      _wsLog = data.toString();
-    });
+    if (mounted && !_disposed) {
+      setState(() {
+        _wsLog = data.toString();
+      });
+    }
   }
 
   Future<void> _sendConnectRequest(BuildContext context) async {
@@ -158,9 +164,17 @@ class _TestTabState extends State<TestTab> {
       }
 
       // 更新顯示
-      setState(() {
-        _currentUserId = newUserId;
-      });
+      if (mounted && !_disposed) {
+        setState(() {
+          _currentUserId = newUserId;
+        });
+      }
+  @override
+  void dispose() {
+    _disposed = true;
+    ChatServiceSingleton.instance.webSocketService.removeMessageListener(_onWsMessage);
+    super.dispose();
+  }
 
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
