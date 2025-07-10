@@ -17,6 +17,13 @@ class TestTab extends StatefulWidget {
 }
 
 class _TestTabState extends State<TestTab> {
+  /// 連接後自動發送連接要求並創建聊天室
+  Future<void> _connectAndCreateRoom(BuildContext context) async {
+    if (!context.mounted) return;
+    await _sendConnectRequest(context);
+    if (!context.mounted) return;
+    await _createRoom(context);
+  }
   String _wsLog = '';
   String _currentUserId = 'unknown_user';
 
@@ -29,8 +36,10 @@ class _TestTabState extends State<TestTab> {
 
   Future<void> _loadCurrentUserId() async {
     final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('user_id') ?? 'unknown_user';
+    if (!mounted) return;
     setState(() {
-      _currentUserId = prefs.getString('user_id') ?? 'unknown_user';
+      _currentUserId = userId;
     });
   }
 
@@ -305,6 +314,11 @@ class _TestTabState extends State<TestTab> {
             ElevatedButton(
               onPressed: () => _createRoom(context),
               child: const Text('創建聊天室（與 0000）'),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () => _connectAndCreateRoom(context),
+              child: const Text('連接並創建聊天室'),
             ),
             const SizedBox(height: 24),
             ElevatedButton(

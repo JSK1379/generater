@@ -108,7 +108,13 @@ class ChatService extends ChangeNotifier {
         final fromUser = data['from'];
         final toUser = data['to'];
         final accept = data['accept'];
-        debugPrint('[ChatService] 收到 connect_response: from=$fromUser, to=$toUser, accept=$accept');
+        final roomId = data['roomId'];
+        debugPrint('[ChatService] 收到 connect_response: from=$fromUser, to=$toUser, accept=$accept, roomId=$roomId');
+        if (accept == true && roomId != null && roomId is String && !_joinedRooms.contains(roomId)) {
+          // 自動加入聊天室
+          joinRoom(roomId);
+          debugPrint('[ChatService] 自動 join_room: $roomId');
+        }
         notifyListeners();
         break;
       case 'room_created':
