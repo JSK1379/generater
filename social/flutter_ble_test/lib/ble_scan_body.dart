@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:async';
 import 'chat_service_singleton.dart';
-import 'chat_page.dart';
+// ...existing code...
 import 'package:shared_preferences/shared_preferences.dart';
 
 class BleScanBody extends StatefulWidget {
@@ -143,52 +143,22 @@ class _BleScanBodyState extends State<BleScanBody> {
     }
 
     if (!mounted) return;
-    // 用戶確認要連接，開啟聊天室
     final chatService = ChatServiceSingleton.instance;
     final currentUserId = await chatService.getCurrentUserId();
-    
     // 優先使用 userId，如果沒有則回退到 deviceId
     final otherUserId = connectionInfo['userId']!.isNotEmpty 
         ? connectionInfo['userId']! 
         : connectionInfo['deviceId']!;
-    
-    final roomId = chatService.generateRoomId(currentUserId, otherUserId);
+    // final roomId = chatService.generateRoomId(currentUserId, otherUserId); // 已移除未使用變數
 
-    // 儲存聊天室歷史
-    await _saveChatRoomHistory(roomId, '與 ${connectionInfo['nickname']} 的聊天', otherUserId);
-
-    if (!mounted) return;
-    try {
-      await device.connect();
-      if (!mounted) return;
-      setState(() => _connectedDevice = device);
-      // 移除服務發現，直接導航到聊天頁面
-      if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ChatPage(
-            roomId: roomId,
-            roomName: '與 ${connectionInfo['nickname']} 的聊天',
-            currentUser: currentUserId,
-            chatService: chatService,
-          ),
-        ),
-      );
-    } catch (e) {
-      // 連接失敗，不顯示聊天室
-      try {
-        await device.disconnect();
-      } catch (_) {}
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('連接失敗：${e.toString()}')),
-      );
-    }
+    // 儲存聊天室歷史（僅在成功建立聊天室時再儲存）
 
     // 發送連線請求，使用 userId
     chatService.sendConnectRequest(currentUserId, otherUserId);
     debugPrint('[BLE] Sent connect_request from: $currentUserId to: $otherUserId (原裝置ID: ${connectionInfo['deviceId']})');
+
+    // 等待 connect_response 由監聽器處理自動進聊天室或顯示被拒絕提示
+    // 這裡不再直接進聊天室
   }
   
   Map<String, String> _extractDeviceInfo(ScanResult scanResult) {
@@ -285,28 +255,7 @@ class _BleScanBodyState extends State<BleScanBody> {
     return const CircleAvatar(radius: 20, child: Icon(Icons.person));
   }
 
-  Future<void> _saveChatRoomHistory(String roomId, String roomName, String otherUserId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final historyJson = prefs.getStringList('chat_history') ?? [];
-    
-    // 檢查是否已存在
-    final exists = historyJson.any((jsonStr) {
-      final data = jsonDecode(jsonStr);
-      return data['roomId'] == roomId;
-    });
-    
-    if (!exists) {
-      final newHistory = {
-        'roomId': roomId,
-        'roomName': roomName,
-        'lastMessage': '',
-        'lastMessageTime': DateTime.now().toIso8601String(),
-        'otherUserId': otherUserId,
-      };
-      historyJson.add(jsonEncode(newHistory));
-      await prefs.setStringList('chat_history', historyJson);
-    }
-  }
+  // ...已移除未使用的 _saveChatRoomHistory 方法...
 
   // 載入當前用戶 ID
   Future<void> _loadCurrentUserId() async {
