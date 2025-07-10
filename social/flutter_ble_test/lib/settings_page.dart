@@ -184,13 +184,17 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ),
       );
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已接受 $nickname 的連接請求')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已接受 $nickname 的連接請求')),
+        );
+      }
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已拒絕連接請求')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已拒絕連接請求')),
+        );
+      }
     }
   }
 
