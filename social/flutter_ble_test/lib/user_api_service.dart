@@ -150,22 +150,43 @@ class UserApiService {
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
           
-          // 檢查回應格式 - 可能是直接的陣列或包含 chat_history 欄位的物件
+          // 檢查回應格式 - 可能是直接的陣列、包含 chat_history 欄位的物件，或包含 messages 欄位的物件
           List<dynamic>? chatHistoryData;
           
           if (data is List) {
             // 直接返回陣列格式
             chatHistoryData = data;
             debugPrint('[UserApiService] 收到直接陣列格式的聊天記錄');
-          } else if (data is Map<String, dynamic> && data['chat_history'] != null) {
-            // 包裝在 chat_history 欄位中的格式
-            chatHistoryData = data['chat_history'];
-            debugPrint('[UserApiService] 收到包裝格式的聊天記錄');
+          } else if (data is Map<String, dynamic>) {
+            if (data['messages'] != null && data['messages'] is List) {
+              // 包裝在 messages 欄位中的格式 (新格式)
+              chatHistoryData = data['messages'];
+              debugPrint('[UserApiService] 收到 messages 格式的聊天記錄');
+            } else if (data['chat_history'] != null && data['chat_history'] is List) {
+              // 包裝在 chat_history 欄位中的格式 (舊格式)
+              chatHistoryData = data['chat_history'];
+              debugPrint('[UserApiService] 收到 chat_history 格式的聊天記錄');
+            }
           }
           
-          // 檢查聊天記錄是否存在且為列表
+          // 檢查聊天記錄是否存在
           if (chatHistoryData != null) {
-            final chatHistory = List<Map<String, dynamic>>.from(chatHistoryData);
+            // 轉換消息格式以匹配我們的 ChatMessage 格式
+            final chatHistory = <Map<String, dynamic>>[];
+            for (final messageData in chatHistoryData) {
+              if (messageData is Map<String, dynamic>) {
+                // 轉換服務器格式到我們的格式
+                final convertedMessage = {
+                  'id': messageData['id']?.toString() ?? '',
+                  'type': 'text', // 默認為文本類型
+                  'content': messageData['content'] ?? '',
+                  'sender': messageData['sender_id']?.toString() ?? messageData['sender']?.toString() ?? '',
+                  'timestamp': messageData['timestamp'] ?? '',
+                  'image_url': messageData['image_url'],
+                };
+                chatHistory.add(convertedMessage);
+              }
+            }
             debugPrint('[UserApiService] 獲取聊天記錄成功: roomId=$roomId, count=${chatHistory.length}');
             return chatHistory;
           } else {
