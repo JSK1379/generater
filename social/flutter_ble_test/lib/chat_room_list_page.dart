@@ -93,8 +93,19 @@ class _ChatRoomListPageState extends State<ChatRoomListPage> {
     final chatService = ChatServiceSingleton.instance;
     final currentUserId = await chatService.getCurrentUserId();
     
+    // 先加入聊天室
+    final joinSuccess = await chatService.joinRoom(history.roomId);
+    
     if (!mounted) return;
     
+    if (!joinSuccess) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('加入聊天室失敗')),
+      );
+      return;
+    }
+    
+    // 加入成功後會自動請求聊天歷史記錄，然後導航到聊天頁面
     final result = await Navigator.push(
       context,
       MaterialPageRoute(

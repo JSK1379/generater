@@ -40,6 +40,19 @@ class ChatService extends ChangeNotifier {
       Future.microtask(() => notifyListeners());
     }
   }
+  
+  // 設定當前聊天室
+  void setCurrentRoom(String roomId) {
+    // 尋找房間對象
+    final rooms = _chatRooms.where((room) => room.id == roomId).toList();
+    if (rooms.isNotEmpty) {
+      _currentRoom = rooms.first;
+      debugPrint('[ChatService] 設置當前房間: $roomId');
+      notifyListeners();
+    } else {
+      debugPrint('[ChatService] 無法設置當前房間，找不到房間: $roomId');
+    }
+  }
 
   // 連接聊天室
   Future<bool> connect(String wsUrl, String roomId, String userId) async {
@@ -65,6 +78,16 @@ class ChatService extends ChangeNotifier {
     final messageType = data['type'];
     
     switch (messageType) {
+      case 'chat_history':
+        // 處理聊天歷史記錄，在 fetchChatHistory 方法中已經處理了
+        // 這裡是為了處理可能的直接回傳
+        final roomId = data['roomId'];
+        if (roomId != null && roomId is String) {
+          debugPrint('[ChatService] 收到 chat_history 消息: $roomId');
+          
+          // 歷史記錄會在 fetchChatHistory 方法的 handler 中處理，這裡不重複處理
+        }
+        break;
       case 'connect_request':
         // 處理連接請求
         final fromUser = data['from'];
@@ -375,6 +398,8 @@ class ChatService extends ChangeNotifier {
     // 防呆：檢查是否已加入此房間
     if (_joinedRooms.contains(roomId)) {
       debugPrint('[ChatService] 房間 $roomId 已加入，跳過重複 join');
+      // 即使已經加入，仍然請求一次聊天歷史記錄
+      fetchChatHistory(roomId);
       return true;
     }
     
@@ -400,6 +425,9 @@ class ChatService extends ChangeNotifier {
         if (_joinRoomCompleters.containsKey(roomId)) {
           _joinRoomCompleters[roomId]!.complete(true);
           _joinRoomCompleters.remove(roomId);
+          
+          // 成功加入房間後，請求聊天歷史記錄
+          fetchChatHistory(roomId);
         }
       }
     }
@@ -437,6 +465,94 @@ class ChatService extends ChangeNotifier {
       'roomId': roomId,
     });
     return completer.future;
+  }
+
+  // 獲取聊天歷史記錄
+  Future<void> fetchChatHistory(String roomId) async {
+    debugPrint('[ChatService] 請求聊天室 $roomId 的歷史記錄');
+    
+    // 向伺服器請求聊天歷史
+    _webSocketService.sendMessage({
+      'type': 'get_chat_history',
+      'roomId': roomId,
+    });
+    
+    // 添加一個處理器來接收歷史記錄回應
+    void handler(Map<String, dynamic> data) {
+      if (data['type'] == 'chat_history' && data['roomId'] == roomId) {
+        _webSocketService.removeMessageListener(handler);
+        debugPrint('[ChatService] 收到聊天室 $roomId 的歷史記錄');
+        
+        // 清空當前房間的訊息列表
+        if (_currentRoom?.id == roomId) {
+          _messages.clear();
+        }
+        
+        // 處理聊天歷史記錄
+        final chatHistory = data['chat_history'];
+        if (chatHistory != null && chatHistory is List) {
+          for (final messageData in chatHistory) {
+            if (messageData is Map<String, dynamic>) {
+              final messageId = messageData['id']?.toString() ?? '';
+              
+              // 防重複：檢查是否已處理過此訊息
+              if (!_processedMessages.contains(messageId)) {
+                final message = ChatMessage(
+                  id: messageId,
+                  type: messageData['type'] ?? 'text',
+                  content: messageData['content'] ?? '',
+                  sender: messageData['sender'] ?? '',
+                  timestamp: DateTime.tryParse(messageData['timestamp'] ?? '') ?? DateTime.now(),
+                  imageUrl: messageData['image_url'],
+                );
+                
+                _messages.add(message);
+                _processedMessages.add(messageId);
+                debugPrint('[ChatService] 添加歷史訊息: ${message.content}');
+              }
+            }
+          }
+          
+          // 通知 UI 更新
+          notifyListeners();
+          
+          // 將消息保存到本地儲存空間
+          _saveMessagesToLocalStorage(roomId);
+        } else {
+          debugPrint('[ChatService] 歷史記錄為空或格式不正確');
+        }
+      }
+    }
+    
+    _webSocketService.addMessageListener(handler);
+    
+    // 設置超時，以防伺服器沒有回應
+    Future.delayed(const Duration(seconds: 5), () {
+      _webSocketService.removeMessageListener(handler);
+      debugPrint('[ChatService] 獲取聊天室 $roomId 的歷史記錄超時');
+    });
+  }
+  
+  // 將聊天訊息保存到本地儲存空間
+  Future<void> _saveMessagesToLocalStorage(String roomId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final List<String> historyJson = [];
+    
+    // 篩選出屬於該房間的消息
+    for (final message in _messages) {
+      historyJson.add(jsonEncode(message.toJson()));
+    }
+    
+    await prefs.setStringList('chat_history_$roomId', historyJson);
+    debugPrint('[ChatService] 已保存聊天室 $roomId 的歷史記錄到本地，共 ${historyJson.length} 條訊息');
+    
+    // 如果有訊息，更新最後一條訊息
+    if (_messages.isNotEmpty && _currentRoom != null) {
+      final lastMessage = _messages.last;
+      
+      // 更新聊天室資訊
+      await _updateChatRoomInfo(roomId, lastMessage);
+    }
   }
 
   // 傳送聊天訊息
