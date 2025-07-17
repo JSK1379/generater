@@ -13,7 +13,8 @@
         android:label="flutter_ble_test"
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/LaunchTheme"
-        android:hardwareAccelerated="true">
+        android:hardwareAccelerated="true"
+        android:enableOnBackInvokedCallback="true">
 
         <!-- Flutter v2 Embedding 主 Activity -->
         <activity
