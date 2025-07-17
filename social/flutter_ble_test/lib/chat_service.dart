@@ -116,7 +116,81 @@ class ChatService extends ChangeNotifier {
           }
           
           debugPrint('[ChatService] 成功加入房間: $roomId');
-          // 房間已在 joinRoom 方法中被標記為已加入，這裡不需要再次添加
+          
+          // 添加到已加入房間集合
+          _joinedRooms.add(roomId);
+          
+          // 創建房間對象並添加到列表中
+          if (!_chatRooms.any((r) => r.id == roomId)) {
+            // 從 roomId 中提取參與者信息
+            final participants = <String>[];
+            if (roomId.startsWith('friend_')) {
+              final parts = roomId.split('_');
+              if (parts.length >= 3) {
+                participants.add(parts[1]);
+                participants.add(parts[2]);
+              }
+            }
+            
+            // 嘗試獲取房間名稱
+            String roomName = data['roomName'] ?? '聊天室 $roomId';
+            
+            // 嘗試獲取對方用戶 ID
+            String otherUserId = '';
+            if (data['otherUserId'] != null) {
+              otherUserId = data['otherUserId'];
+              // 如果有對方用戶 ID 但沒有房間名稱，設置默認房間名稱
+              if (roomName == '聊天室 $roomId') {
+                roomName = '與 $otherUserId 的聊天';
+              }
+              // 確保對方用戶 ID 在參與者列表中
+              if (!participants.contains(otherUserId)) {
+                participants.add(otherUserId);
+              }
+            }
+            
+            // 獲取當前用戶 ID
+            getCurrentUserId().then((currentUserId) {
+              // 確保當前用戶 ID 在參與者列表中
+              if (!participants.contains(currentUserId) && currentUserId != 'unknown_user') {
+                participants.add(currentUserId);
+              }
+              
+              // 儲存房間信息到 SharedPreferences
+              SharedPreferences.getInstance().then((prefs) {
+                // 更新房間 ID 列表
+                var roomIds = prefs.getStringList('room_ids') ?? [];
+                if (!roomIds.contains(roomId)) {
+                  roomIds.add(roomId);
+                  prefs.setStringList('room_ids', roomIds);
+                  debugPrint('[ChatService] 已將房間 $roomId 添加到 room_ids 列表');
+                }
+                
+                // 儲存聊天室資訊
+                if (otherUserId.isNotEmpty) {
+                  final history = ChatRoomHistory(
+                    roomId: roomId,
+                    roomName: roomName,
+                    lastMessage: '',
+                    lastMessageTime: DateTime.now(),
+                    otherUserId: otherUserId,
+                  );
+                  prefs.setString('chat_room_info_$roomId', jsonEncode(history.toJson()));
+                  debugPrint('[ChatService] 已儲存聊天室資訊: ${history.toJson()}');
+                }
+              });
+            });
+            
+            final room = ChatRoom(
+              id: roomId,
+              name: roomName,
+              participants: participants,
+              createdAt: DateTime.now(),
+            );
+            _chatRooms.add(room);
+            debugPrint('[ChatService] 已添加房間到 _chatRooms: ${room.toJson()}');
+          }
+          
           notifyListeners();
         }
         break;
@@ -189,6 +263,62 @@ class ChatService extends ChangeNotifier {
                 }
               }
             }
+          }
+          
+          // 添加到已加入房間集合
+          _joinedRooms.add(roomId);
+          
+          // 添加房間到聊天室列表
+          if (!_chatRooms.any((r) => r.id == roomId)) {
+            // 從 roomId 中提取參與者信息
+            final participants = <String>[];
+            if (roomId.startsWith('friend_')) {
+              final parts = roomId.split('_');
+              if (parts.length >= 3) {
+                participants.add(parts[1]);
+                participants.add(parts[2]);
+              }
+            } else {
+              // 確保對方用戶和當前用戶都在參與者列表中
+              participants.add(fromUser);
+              participants.add(toUser);
+            }
+            
+            // 儲存房間信息到 SharedPreferences
+            getCurrentUserId().then((currentUserId) {
+              // 對方用戶 ID
+              final otherUserId = (fromUser == currentUserId) ? toUser : fromUser;
+              
+              SharedPreferences.getInstance().then((prefs) {
+                // 更新房間 ID 列表
+                var roomIds = prefs.getStringList('room_ids') ?? [];
+                if (!roomIds.contains(roomId)) {
+                  roomIds.add(roomId);
+                  prefs.setStringList('room_ids', roomIds);
+                  debugPrint('[ChatService] connect_response: 已將房間 $roomId 添加到 room_ids 列表');
+                }
+                
+                // 儲存聊天室資訊
+                final history = ChatRoomHistory(
+                  roomId: roomId,
+                  roomName: '與 $otherUserId 的聊天',
+                  lastMessage: '',
+                  lastMessageTime: DateTime.now(),
+                  otherUserId: otherUserId,
+                );
+                prefs.setString('chat_room_info_$roomId', jsonEncode(history.toJson()));
+                debugPrint('[ChatService] connect_response: 已儲存聊天室資訊: ${history.toJson()}');
+              });
+            });
+            
+            final room = ChatRoom(
+              id: roomId,
+              name: '與$fromUser的聊天',
+              participants: participants,
+              createdAt: DateTime.now(),
+            );
+            _chatRooms.add(room);
+            debugPrint('[ChatService] connect_response: 已添加房間到 _chatRooms: $roomId');
           }
           
           // 注意：不在這裡自動加入聊天室，而是讓 MainTabPage 處理

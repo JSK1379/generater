@@ -191,19 +191,11 @@ class MainTabPageState extends State<MainTabPage> {
   // 儲存聊天室歷史
   Future<void> _saveChatRoomHistory(String roomId, String roomName, String otherUserId) async {
     final prefs = await SharedPreferences.getInstance();
-    final historyJson = prefs.getStringList('chat_history') ?? [];
-    
-    // 檢查是否已存在
-    final exists = historyJson.any((jsonStr) {
-      final data = jsonDecode(jsonStr);
-      return data['roomId'] == roomId;
-    });
     
     // 嘗試獲取對方暱稱
     String otherNickname = '';
     try {
       // 從連接對象獲取暱稱
-      final prefs = await SharedPreferences.getInstance();
       final connectionHistoryJson = prefs.getStringList('connection_history') ?? [];
       for (final jsonStr in connectionHistoryJson) {
         final data = jsonDecode(jsonStr);
@@ -222,35 +214,26 @@ class MainTabPageState extends State<MainTabPage> {
       otherNickname = otherUserId;
     }
     
-    if (!exists) {
-      final newHistory = {
-        'roomId': roomId,
-        'roomName': '與\'$otherNickname\'的聊天室',
-        'lastMessage': '',
-        'lastMessageTime': DateTime.now().toIso8601String(),
-        'otherUserId': otherUserId,
-        'otherNickname': otherNickname,
-      };
-      historyJson.add(jsonEncode(newHistory));
-      await prefs.setStringList('chat_history', historyJson);
-      
-      // 更新 room_ids 列表，這個列表是 chat_room_list_page.dart 用來顯示聊天室的
-      var roomIds = prefs.getStringList('room_ids') ?? [];
-      if (!roomIds.contains(roomId)) {
-        roomIds.add(roomId);
-        await prefs.setStringList('room_ids', roomIds);
-      }
-      
-      // 同時創建或更新聊天室資訊
-      final roomInfo = ChatRoomHistory(
-        roomId: roomId,
-        roomName: '與\'$otherNickname\'的聊天室',
-        lastMessage: '',
-        lastMessageTime: DateTime.now(),
-        otherUserId: otherUserId,
-        otherNickname: otherNickname,
-      );
-      await prefs.setString('chat_room_info_$roomId', jsonEncode(roomInfo.toJson()));
+    // 創建聊天室歷史記錄對象
+    final roomInfo = ChatRoomHistory(
+      roomId: roomId,
+      roomName: '與\'$otherNickname\'的聊天室',
+      lastMessage: '',
+      lastMessageTime: DateTime.now(),
+      otherUserId: otherUserId,
+      otherNickname: otherNickname,
+    );
+    
+    // 儲存聊天室歷史記錄
+    await prefs.setString('chat_room_info_$roomId', jsonEncode(roomInfo.toJson()));
+    debugPrint('[MainTabPage] 已儲存聊天室資訊: ${roomInfo.toJson()}');
+    
+    // 更新 room_ids 列表，這個列表是 chat_room_list_page.dart 用來顯示聊天室的
+    var roomIds = prefs.getStringList('room_ids') ?? [];
+    if (!roomIds.contains(roomId)) {
+      roomIds.add(roomId);
+      await prefs.setStringList('room_ids', roomIds);
+      debugPrint('[MainTabPage] 已將房間 $roomId 添加到 room_ids 列表');
     }
   }
 
@@ -318,27 +301,20 @@ class MainTabPageState extends State<MainTabPage> {
       if (!mounted) return;
       
       if (joinSuccess) {
-        // 只有在成功加入房間後才導航到聊天頁面
-        // 自動跳轉聊天室 - 無async gap後使用context
-        _navigateToChatPage(roomId, currentUserId);
-        
+        // 更新 UI 以顯示新的聊天室
         // 通知聊天室分頁刷新
         if (ChatRoomListPage.refresh != null) {
           ChatRoomListPage.refresh!();
         }
+        
+        // 只有在成功加入房間後才導航到聊天頁面
+        // 自動跳轉聊天室 - 無async gap後使用context
+        _navigateToChatPage(roomId, currentUserId);
       } else {
         // 加入房間失敗時顯示錯誤訊息
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('加入聊天室失敗')),
         );
-      }
-      
-      // 自動跳轉聊天室 - 無async gap後使用context
-      _navigateToChatPage(roomId, currentUserId);
-      
-      // 通知聊天室分頁刷新
-      if (ChatRoomListPage.refresh != null) {
-        ChatRoomListPage.refresh!();
       }
     }
   }
