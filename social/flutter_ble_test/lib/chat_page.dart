@@ -37,8 +37,13 @@ class _ChatPageState extends State<ChatPage> {
       widget.chatService.joinRoom(widget.roomId);
     }
     
-    // 監聽訊息變化，自動捲動到底部
-    widget.chatService.addListener(_scrollToBottom);
+    // 使用異步處理來安全地設置監聽器
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        // 監聽訊息變化，自動捲動到底部
+        widget.chatService.addListener(_scrollToBottom);
+      }
+    });
   }
 
   Future<void> _connectToWebSocket() async {
@@ -59,13 +64,22 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _scrollToBottom() {
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    }
+    // 添加延遲確保組件已經構建完成
+    Future.delayed(Duration.zero, () {
+      if (mounted && _scrollController.hasClients) {
+        try {
+          final maxExtent = _scrollController.position.maxScrollExtent;
+          _scrollController.animateTo(
+            maxExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        } catch (e) {
+          // 忽略滾動錯誤，這通常發生在組件樹重建過程中
+          debugPrint('滾動到底部時出錯: $e');
+        }
+      }
+    });
   }
 
   void _sendMessage() {

@@ -34,8 +34,11 @@ class ChatService extends ChangeNotifier {
 
   // 設定當前用戶
   void setCurrentUser(String username) {
-    _currentUser = username;
-    notifyListeners();
+    if (_currentUser != username) {
+      _currentUser = username;
+      // 使用 Future.microtask 確保通知不會在構建過程中觸發
+      Future.microtask(() => notifyListeners());
+    }
   }
 
   // 連接聊天室
