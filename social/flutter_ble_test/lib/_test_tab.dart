@@ -145,11 +145,17 @@ class _TestTabState extends State<TestTab> {
       
       // 不再保存聊天室歷史，由 joined_room 事件處理
       
-      // 先發送 joinRoom 請求
-      chatService.joinRoom(roomId).then((_) {
-        debugPrint('[TestTab] joinRoom 完成');
-      });
-      joinMsg = '\n已自動發送 join_room: {"type": "join_room", "roomId": "$roomId"}';
+      // 檢查是否已加入此房間
+      if (chatService.chatRooms.any((room) => room.id == roomId)) {
+        debugPrint('[TestTab] 房間 $roomId 已存在於聊天室列表中，跳過 joinRoom');
+        joinMsg = '\n房間 $roomId 已存在，無需再次加入';
+      } else {
+        // 先發送 joinRoom 請求
+        chatService.joinRoom(roomId).then((success) {
+          debugPrint('[TestTab] joinRoom 完成: $success');
+        });
+        joinMsg = '\n已自動發送 join_room: {"type": "join_room", "roomId": "$roomId"}';
+      }
       debugPrint('已請求建立聊天室: $roomName (roomId: $roomId)$joinMsg');
     } else {
       debugPrint('[TestTab] 建立聊天室失敗，roomId 為 null');

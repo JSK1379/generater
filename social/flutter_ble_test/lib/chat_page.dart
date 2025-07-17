@@ -27,19 +27,17 @@ class _ChatPageState extends State<ChatPage> {
   @override
   void initState() {
     super.initState();
-    widget.chatService.setCurrentUser(widget.currentUser);
     
-    // 如果還沒連線，先連線到 WebSocket 伺服器
-    if (!widget.chatService.isConnected) {
-      _connectToWebSocket();
-    } else {
-      // 已連線則直接加入房間
-      widget.chatService.joinRoom(widget.roomId);
-    }
-    
-    // 使用異步處理來安全地設置監聽器
+    // 設置當前用戶
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
+        widget.chatService.setCurrentUser(widget.currentUser);
+        
+        // 如果還沒連線，先連線到 WebSocket 伺服器
+        if (!widget.chatService.isConnected) {
+          _connectToWebSocket();
+        }
+        
         // 監聽訊息變化，自動捲動到底部
         widget.chatService.addListener(_scrollToBottom);
       }
@@ -52,14 +50,16 @@ class _ChatPageState extends State<ChatPage> {
       widget.roomId,
       widget.currentUser,
     );
+    
+    if (!mounted) return;
+    
     if (success) {
-      widget.chatService.joinRoom(widget.roomId);
+      // 連線成功，不需要在這裡調用 joinRoom
+      // ChatService 會在處理 connect_response 時自動加入房間
     } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('無法連接到聊天伺服器')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('無法連接到聊天伺服器')),
+      );
     }
   }
 

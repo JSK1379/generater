@@ -310,17 +310,27 @@ class MainTabPageState extends State<MainTabPage> {
       
       // 加入聊天室 - 在 ChatService 中不再自動加入
       final chatService = ChatServiceSingleton.instance;
-      await chatService.joinRoom(roomId);
       
-      // 在獲取異步數據後立即檢查 mounted
+      // 使用 await 確保在後續操作前完成加入房間
+      final joinSuccess = await chatService.joinRoom(roomId);
+      
+      // 檢查是否仍然 mounted
       if (!mounted) return;
       
-      // 自動跳轉聊天室 - 無async gap後使用context
-      _navigateToChatPage(roomId, currentUserId);
-      
-      // 通知聊天室分頁刷新
-      if (ChatRoomListPage.refresh != null) {
-        ChatRoomListPage.refresh!();
+      if (joinSuccess) {
+        // 只有在成功加入房間後才導航到聊天頁面
+        // 自動跳轉聊天室 - 無async gap後使用context
+        _navigateToChatPage(roomId, currentUserId);
+        
+        // 通知聊天室分頁刷新
+        if (ChatRoomListPage.refresh != null) {
+          ChatRoomListPage.refresh!();
+        }
+      } else {
+        // 加入房間失敗時顯示錯誤訊息
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('加入聊天室失敗')),
+        );
       }
       
       // 自動跳轉聊天室 - 無async gap後使用context

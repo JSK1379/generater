@@ -107,6 +107,14 @@ class ChatService extends ChangeNotifier {
         // 處理從伺服器收到的已加入房間消息
         final roomId = data['roomId'];
         if (roomId != null) {
+          // 檢查是否有等待的 completer
+          final hasCompleter = _joinRoomCompleters.containsKey(roomId);
+          if (!hasCompleter) {
+            // 如果沒有 completer，表示這可能是一個重複的 joined_room 消息
+            // 或者是從其他地方（如主頁）加入房間的響應
+            debugPrint('[ChatService] 收到 joined_room，但沒有等待的 completer: $roomId');
+          }
+          
           debugPrint('[ChatService] 成功加入房間: $roomId');
           // 房間已在 joinRoom 方法中被標記為已加入，這裡不需要再次添加
           notifyListeners();
@@ -231,15 +239,24 @@ class ChatService extends ChangeNotifier {
   }
 
   // 加入房間，伺服器回傳 joined_room（添加防呆機制）
+  final Map<String, Completer<bool>> _joinRoomCompleters = {};
+  
   Future<bool> joinRoom(String roomId) async {
     // 防呆：檢查是否已加入此房間
     if (_joinedRooms.contains(roomId)) {
       debugPrint('[ChatService] 房間 $roomId 已加入，跳過重複 join');
       return true;
     }
-
+    
+    // 防呆：檢查是否正在加入此房間
+    if (_joinRoomCompleters.containsKey(roomId)) {
+      debugPrint('[ChatService] 房間 $roomId 正在加入中，等待完成');
+      return _joinRoomCompleters[roomId]!.future;
+    }
+    
     debugPrint('[ChatService] 正在加入房間: $roomId');
     final completer = Completer<bool>();
+    _joinRoomCompleters[roomId] = completer;
     
     // 預先將房間標記為已加入，避免同時發起多個加入請求
     _joinedRooms.add(roomId);
@@ -248,14 +265,30 @@ class ChatService extends ChangeNotifier {
       if (data['type'] == 'joined_room' && data['roomId'] == roomId) {
         _webSocketService.removeMessageListener(handler);
         debugPrint('[ChatService] 收到 joined_room 回應: $roomId');
-        completer.complete(true);
+        
+        // 完成 completer 並從 map 中移除
+        if (_joinRoomCompleters.containsKey(roomId)) {
+          _joinRoomCompleters[roomId]!.complete(true);
+          _joinRoomCompleters.remove(roomId);
+        }
       }
     }
+    
     _webSocketService.addMessageListener(handler);
     _webSocketService.sendMessage({
       'type': 'join_room',
       'roomId': roomId,
     });
+    
+    // 設置超時，以防伺服器沒有回應
+    Future.delayed(const Duration(seconds: 5), () {
+      if (_joinRoomCompleters.containsKey(roomId) && !completer.isCompleted) {
+        debugPrint('[ChatService] 加入房間 $roomId 超時');
+        _joinRoomCompleters.remove(roomId);
+        completer.complete(false);
+      }
+    });
+    
     return completer.future;
   }
 
@@ -521,6 +554,19 @@ class ChatService extends ChangeNotifier {
 
   @override
   void dispose() {
+    // 移除所有監聽器
+    _webSocketService.removeMessageListener(_handleMessage);
+    _webSocketService.removeConnectionListener(_handleConnectionChange);
+    
+    // 清理所有等待中的 completer
+    for (final completer in _joinRoomCompleters.values) {
+      if (!completer.isCompleted) {
+        completer.complete(false);
+      }
+    }
+    _joinRoomCompleters.clear();
+    
+    // 清理 WebSocket 連接
     _webSocketService.dispose();
     super.dispose();
   }
