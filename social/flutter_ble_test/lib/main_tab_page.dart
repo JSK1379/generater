@@ -11,6 +11,7 @@ import 'chat_service_singleton.dart';
 import 'chat_page.dart';
 import 'dart:convert';
 import 'chat_models.dart';
+import 'chat_room_open_manager.dart'; // 導入全局管理器
 
 class MainTabPage extends StatefulWidget {
   const MainTabPage({super.key});
@@ -23,6 +24,9 @@ class MainTabPageState extends State<MainTabPage> {
   bool _isAdvertising = false;
   final TextEditingController _nicknameController = TextEditingController();
   Uint8List? _avatarThumbnailBytes;
+  
+  // 使用全局管理器管理聊天室開啟狀態
+  final ChatRoomOpenManager _openManager = ChatRoomOpenManager();
 
   @override
   void initState() {
@@ -321,17 +325,29 @@ class MainTabPageState extends State<MainTabPage> {
   
   // 拆分為同步方法，避免 async gap
   void _navigateToChatPage(String roomId, String currentUserId) {
+    // 使用全局管理器防止重複開啟
+    if (!_openManager.markRoomAsOpening(roomId)) {
+      debugPrint('[MainTabPage] 聊天室 $roomId 正在開啟中，忽略重複導航');
+      return;
+    }
+    
     // 從歷史紀錄中取得聊天室名稱
     SharedPreferences.getInstance().then((prefs) {
       // 先檢查是否還掛載
-      if (!mounted) return;
+      if (!mounted) {
+        _openManager.markRoomAsClosed(roomId);
+        return;
+      }
       
       final chatService = ChatServiceSingleton.instance;
       
       // 使用 ChatService 的方法取得聊天室顯示名稱
       chatService.getChatRoomDisplayName(roomId, currentUserId).then((roomName) {
         // 檢查 widget 是否仍然掛載
-        if (!mounted) return;
+        if (!mounted) {
+          _openManager.markRoomAsClosed(roomId);
+          return;
+        }
         
         Navigator.push(
           context,
@@ -343,8 +359,19 @@ class MainTabPageState extends State<MainTabPage> {
               chatService: chatService,
             ),
           ),
-        );
+        ).then((_) {
+          // 導航結束後，從集合中移除
+          _openManager.markRoomAsClosed(roomId);
+        });
+      }).catchError((error) {
+        // 發生錯誤，從集合中移除
+        _openManager.markRoomAsClosed(roomId);
+        debugPrint('[MainTabPage] 獲取聊天室名稱出錯: $error');
       });
+    }).catchError((error) {
+      // 發生錯誤，從集合中移除
+      _openManager.markRoomAsClosed(roomId);
+      debugPrint('[MainTabPage] 獲取SharedPreferences出錯: $error');
     });
   }
 }

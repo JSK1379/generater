@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'chat_service.dart';
 import 'chat_models.dart';
+import 'chat_room_open_manager.dart'; // 導入全局管理器
 
 class ChatPage extends StatefulWidget {
   final String roomId;
@@ -23,6 +24,9 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  
+  // 使用全局管理器
+  final ChatRoomOpenManager _openManager = ChatRoomOpenManager();
 
   @override
   void initState() {
@@ -102,6 +106,10 @@ class _ChatPageState extends State<ChatPage> {
     widget.chatService.removeListener(_scrollToBottom);
     _messageController.dispose();
     _scrollController.dispose();
+    
+    // 確保在頁面關閉時標記聊天室為已關閉
+    _openManager.markRoomAsClosed(widget.roomId);
+    
     super.dispose();
   }
 

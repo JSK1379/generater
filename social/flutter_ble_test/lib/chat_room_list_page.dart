@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'chat_service_singleton.dart';
 import 'chat_page.dart';
 import 'chat_models.dart'; // 添加引入
+import 'chat_room_open_manager.dart'; // 添加全局管理器引入
 
 class ChatRoomListPage extends StatefulWidget {
   const ChatRoomListPage({super.key});
@@ -18,6 +20,9 @@ class _ChatRoomListPageState extends State<ChatRoomListPage> {
   List<ChatRoomHistory> _chatHistory = [];
   bool _isLoading = true;
   String _currentUserId = '';
+  
+  // 使用全局管理器
+  final ChatRoomOpenManager _openManager = ChatRoomOpenManager();
 
   @override
   void initState() {
@@ -89,16 +94,30 @@ class _ChatRoomListPageState extends State<ChatRoomListPage> {
 
 
 
+  // 確保只能進入未開啟的聊天室
   void _enterChatRoom(ChatRoomHistory history) async {
+    // 使用全局管理器防止重複點擊開啟同一聊天室
+    if (!_openManager.markRoomAsOpening(history.roomId)) {
+      debugPrint('[ChatRoomListPage] 聊天室 ${history.roomId} 正在開啟中，忽略重複點擊');
+      return;
+    }
+    
     final chatService = ChatServiceSingleton.instance;
     final currentUserId = await chatService.getCurrentUserId();
     
     // 先加入聊天室
     final joinSuccess = await chatService.joinRoom(history.roomId);
     
-    if (!mounted) return;
+    if (!mounted) {
+      // 如果不再掛載，從開啟集合中移除
+      _openManager.markRoomAsClosed(history.roomId);
+      return;
+    }
     
     if (!joinSuccess) {
+      // 加入失敗，從開啟集合中移除
+      _openManager.markRoomAsClosed(history.roomId);
+      
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('加入聊天室失敗')),
       );
@@ -106,21 +125,36 @@ class _ChatRoomListPageState extends State<ChatRoomListPage> {
     }
     
     // 加入成功後會自動請求聊天歷史記錄，然後導航到聊天頁面
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ChatPage(
-          roomId: history.roomId,
-          roomName: history.roomName,
-          currentUser: currentUserId,
-          chatService: chatService,
+    try {
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ChatPage(
+            roomId: history.roomId,
+            roomName: history.roomName,
+            currentUser: currentUserId,
+            chatService: chatService,
+          ),
         ),
-      ),
-    );
-    
-    // 如果從聊天頁回來，重新載入歷史
-    if (result != null) {
-      _loadChatHistory();
+      );
+      
+      // 聊天室已關閉，從全局管理器中移除
+      _openManager.markRoomAsClosed(history.roomId);
+      
+      // 如果從聊天頁回來，重新載入歷史
+      if (result != null && mounted) {
+        _loadChatHistory();
+      }
+    } catch (e) {
+      // 發生錯誤，從全局管理器中移除
+      _openManager.markRoomAsClosed(history.roomId);
+      debugPrint('[ChatRoomListPage] 開啟聊天室出錯: $e');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('開啟聊天室時發生錯誤: ${e.toString().substring(0, math.min(50, e.toString().length))}')),
+        );
+      }
     }
   }
 
