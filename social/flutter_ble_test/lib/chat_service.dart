@@ -4,6 +4,7 @@ import 'websocket_service.dart';
 import 'chat_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'chat_room_list_page.dart'; // 添加引入
 
 class ChatService extends ChangeNotifier {
   final WebSocketService _webSocketService = WebSocketService();
@@ -76,18 +77,22 @@ class ChatService extends ChangeNotifier {
       case 'message':
         // 處理聊天訊息，添加防重複機制
         final messageId = data['id'] ?? 'msg_${DateTime.now().millisecondsSinceEpoch}';
+        final sender = data['sender'] ?? '';
+        final content = data['content'] ?? '';
+        
+        debugPrint('ChatService: 收到訊息 - $data');
         
         // 防重複：檢查是否已處理過此訊息
         if (_processedMessages.contains(messageId)) {
-          debugPrint('ChatService: 訊息 $messageId 已處理過，跳過重複處理');
+          debugPrint('ChatService: 訊息 $messageId 已處理過，跳過重複處理，為什麼會重複發送訊息跟加入房間');
           break;
         }
         
         final message = ChatMessage(
           id: messageId,
           type: 'text',
-          content: data['content'] ?? '', // 使用 content 欄位
-          sender: data['sender'] ?? '',
+          content: content,
+          sender: sender,
           timestamp: DateTime.tryParse(data['timestamp'] ?? '') ?? DateTime.now(),
           imageUrl: data['imageUrl'],
         );
@@ -262,18 +267,87 @@ class ChatService extends ChangeNotifier {
     // 獲取當前用戶 ID
     final userId = await getCurrentUserId();
     
+    final messageId = 'msg_${DateTime.now().millisecondsSinceEpoch}';
+    final timestamp = DateTime.now().toUtc();
+    
     final message = {
       'type': 'message',
-      'id': 'msg_${DateTime.now().millisecondsSinceEpoch}', // id 欄位作為訊息的唯一識別碼
+      'id': messageId, // id 欄位作為訊息的唯一識別碼
       'sender': userId, // sender 使用用戶 ID (string)
       'roomId': roomId,
       'content': content,
-      'timestamp': DateTime.now().toUtc().toIso8601String(),
+      'timestamp': timestamp.toIso8601String(),
       'imageUrl': imageUrl, // 如果沒有圖片會是 null
     };
     
+    // 儲存訊息到本地儲存空間
+    await _saveMessageToLocalStorage(roomId, ChatMessage(
+      id: messageId,
+      type: 'text',
+      content: content,
+      sender: userId,
+      timestamp: timestamp,
+      imageUrl: imageUrl,
+    ));
+    
     debugPrint('ChatService: 發送聊天訊息到伺服器 - $message');
     _webSocketService.sendMessage(message);
+  }
+  
+  // 儲存聊天室訊息到本地
+  Future<void> _saveMessageToLocalStorage(String roomId, ChatMessage message) async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // 獲取該聊天室的歷史記錄
+    final roomHistoryJson = prefs.getStringList('chat_history_$roomId') ?? [];
+    
+    // 將新訊息添加到歷史記錄
+    roomHistoryJson.add(jsonEncode(message.toJson()));
+    
+    // 儲存更新後的歷史記錄
+    await prefs.setStringList('chat_history_$roomId', roomHistoryJson);
+    
+    // 更新房間列表
+    var roomIds = prefs.getStringList('room_ids') ?? [];
+    if (!roomIds.contains(roomId)) {
+      roomIds.add(roomId);
+      await prefs.setStringList('room_ids', roomIds);
+    }
+    
+    // 同時保存聊天室信息
+    await _updateChatRoomInfo(roomId, message);
+  }
+  
+  // 更新聊天室信息（包括最後一條消息）
+  Future<void> _updateChatRoomInfo(String roomId, ChatMessage message) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final currentUserId = await getCurrentUserId();
+      
+      // 嘗試取得聊天室信息
+      final currentRooms = _chatRooms.where((room) => room.id == roomId).toList();
+      if (currentRooms.isEmpty) return;
+      
+      final roomInfo = currentRooms.first;
+      
+      // 確定對方用戶ID
+      final otherUserId = roomInfo.participants
+          .firstWhere((p) => p != currentUserId, orElse: () => '');
+      
+      // 創建或更新聊天室歷史記錄
+      final history = ChatRoomHistory(
+        roomId: roomId,
+        roomName: roomInfo.name,
+        lastMessage: message.content,
+        lastMessageTime: message.timestamp,
+        otherUserId: otherUserId,
+      );
+      
+      // 儲存聊天室歷史記錄
+      await prefs.setString('chat_room_info_$roomId', jsonEncode(history.toJson()));
+    } catch (e) {
+      debugPrint('更新聊天室信息失敗: $e');
+    }
   }
 
   // 離開當前聊天室

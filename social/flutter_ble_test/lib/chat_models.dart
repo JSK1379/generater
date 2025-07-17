@@ -42,6 +42,46 @@ class ChatMessage {
   }
 }
 
+class ChatRoomHistory {
+  final String roomId;
+  final String roomName;
+  final String lastMessage;
+  final DateTime lastMessageTime;
+  final String otherUserId;
+  final String otherNickname;
+
+  ChatRoomHistory({
+    required this.roomId,
+    required this.roomName,
+    required this.lastMessage,
+    required this.lastMessageTime,
+    required this.otherUserId,
+    this.otherNickname = '',
+  });
+
+  factory ChatRoomHistory.fromJson(Map<String, dynamic> json) {
+    return ChatRoomHistory(
+      roomId: json['roomId'] ?? '',
+      roomName: json['roomName'] ?? '',
+      lastMessage: json['lastMessage'] ?? '',
+      lastMessageTime: DateTime.tryParse(json['lastMessageTime'] ?? '') ?? DateTime.now(),
+      otherUserId: json['otherUserId'] ?? '',
+      otherNickname: json['otherNickname'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'roomId': roomId,
+      'roomName': roomName,
+      'lastMessage': lastMessage,
+      'lastMessageTime': lastMessageTime.toIso8601String(),
+      'otherUserId': otherUserId,
+      'otherNickname': otherNickname,
+    };
+  }
+}
+
 class ChatRoom {
   final String id;
   final String name;

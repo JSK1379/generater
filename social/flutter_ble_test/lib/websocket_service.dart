@@ -49,6 +49,7 @@ class WebSocketService {
       _socket!.listen(
         (data) {
           try {
+            debugPrint('[WebSocket] 收到原始資料: $data');
             final message = jsonDecode(data) as Map<String, dynamic>;
             for (final listener in List<Function(Map<String, dynamic>)>.from(_messageListeners)) {
               listener(message);

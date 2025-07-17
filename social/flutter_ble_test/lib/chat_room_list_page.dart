@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'chat_service_singleton.dart';
 import 'chat_page.dart';
+import 'chat_models.dart'; // 添加引入
 
 class ChatRoomListPage extends StatefulWidget {
   const ChatRoomListPage({super.key});
@@ -46,12 +47,23 @@ class _ChatRoomListPageState extends State<ChatRoomListPage> {
 
   Future<void> _loadChatHistory() async {
     final prefs = await SharedPreferences.getInstance();
-    final historyJson = prefs.getStringList('chat_history') ?? [];
+    
+    // 獲取所有聊天室 ID
+    final roomIds = prefs.getStringList('room_ids') ?? [];
+    final List<ChatRoomHistory> allHistory = [];
+    
+    // 針對每個聊天室 ID 分別讀取其歷史記錄
+    for (final roomId in roomIds) {
+      final roomHistoryJson = prefs.getStringList('chat_history_$roomId') ?? [];
+      if (roomHistoryJson.isNotEmpty) {
+        // 讀取該聊天室的最新一條記錄作為聊天室列表顯示
+        final lastMessage = ChatRoomHistory.fromJson(jsonDecode(roomHistoryJson.last));
+        allHistory.add(lastMessage);
+      }
+    }
     
     setState(() {
-      _chatHistory = historyJson
-          .map((jsonStr) => ChatRoomHistory.fromJson(jsonDecode(jsonStr)))
-          .toList();
+      _chatHistory = allHistory;
       _chatHistory.sort((a, b) => b.lastMessageTime.compareTo(a.lastMessageTime));
       _isLoading = false;
     });
@@ -181,17 +193,22 @@ class _ChatRoomListPageState extends State<ChatRoomListPage> {
                 },
               );
               if (selected != null && selected.isNotEmpty) {
-                // 呼叫伺服器刪除聊天室
-                for (final roomId in selected) {
-                  ChatServiceSingleton.instance.deleteRoom(roomId);
-                }
-                // 用戶端隱藏聊天室
+                // 只在本地隱藏聊天室，不呼叫伺服器
+                final prefs = await SharedPreferences.getInstance();
+                
+                // 獲取當前的聊天室 ID 列表
+                final roomIds = prefs.getStringList('room_ids') ?? [];
+                
+                // 移除被選中隱藏的聊天室 ID
+                final updatedRoomIds = roomIds.where((id) => !selected.contains(id)).toList();
+                
+                // 更新聊天室 ID 列表
+                prefs.setStringList('room_ids', updatedRoomIds);
+                
+                // 從畫面移除選中的聊天室
                 setState(() {
                   _chatHistory.removeWhere((h) => selected.contains(h.roomId));
                 });
-                // 更新本地儲存
-                final prefs = await SharedPreferences.getInstance();
-                prefs.setStringList('chat_history', _chatHistory.map((h) => jsonEncode(h.toJson())).toList());
               }
             },
           ),
@@ -247,45 +264,5 @@ class _ChatRoomListPageState extends State<ChatRoomListPage> {
         },
       ),
     );
-  }
-}
-
-class ChatRoomHistory {
-  final String roomId;
-  final String roomName;
-  final String lastMessage;
-  final DateTime lastMessageTime;
-  final String otherUserId;
-  final String otherNickname;
-
-  ChatRoomHistory({
-    required this.roomId,
-    required this.roomName,
-    required this.lastMessage,
-    required this.lastMessageTime,
-    required this.otherUserId,
-    this.otherNickname = '',
-  });
-
-  factory ChatRoomHistory.fromJson(Map<String, dynamic> json) {
-    return ChatRoomHistory(
-      roomId: json['roomId'] ?? '',
-      roomName: json['roomName'] ?? '',
-      lastMessage: json['lastMessage'] ?? '',
-      lastMessageTime: DateTime.tryParse(json['lastMessageTime'] ?? '') ?? DateTime.now(),
-      otherUserId: json['otherUserId'] ?? '',
-      otherNickname: json['otherNickname'] ?? '',
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'roomId': roomId,
-      'roomName': roomName,
-      'lastMessage': lastMessage,
-      'lastMessageTime': lastMessageTime.toIso8601String(),
-      'otherUserId': otherUserId,
-      'otherNickname': otherNickname,
-    };
   }
 }

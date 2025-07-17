@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'chat_service_singleton.dart';
 import 'user_api_service.dart';
+import 'dart:async';
 
 const String kTestWsServerUrl = 'wss://near-ride-backend-api.onrender.com/ws';
 const String kTestTargetUserId = '0000';
@@ -19,21 +20,38 @@ class _TestTabState extends State<TestTab> {
   String _wsLog = '';
   String _currentUserId = 'unknown_user';
   bool _disposed = false;
+  Timer? _logUpdateTimer;
 
   @override
   void initState() {
     super.initState();
-    ChatServiceSingleton.instance.webSocketService.addMessageListener(_onWsMessage);
+    // 不再直接監聽 WebSocket 消息，改為從 ChatServiceSingleton 獲取消息更新
     // 添加連接回應監聽器
     ChatServiceSingleton.instance.addConnectResponseListener(_onConnectResponse);
     _loadCurrentUserId();
     _disposed = false;
+    
+    // 設置定時器，每秒更新一次日誌顯示
+    _logUpdateTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && !_disposed) {
+        setState(() {
+          // 更新日誌顯示
+          final recentMessages = ChatServiceSingleton.instance.messages;
+          if (recentMessages.isNotEmpty) {
+            final lastMsg = recentMessages.last;
+            _wsLog = '最近消息: {type: message, sender: ${lastMsg.sender}, content: ${lastMsg.content}}';
+          }
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
     _disposed = true;
-    ChatServiceSingleton.instance.webSocketService.removeMessageListener(_onWsMessage);
+    // 取消定時器
+    _logUpdateTimer?.cancel();
+    // 移除連接回應監聽器
     ChatServiceSingleton.instance.removeConnectResponseListener(_onConnectResponse);
     _targetUserIdController.dispose();
     super.dispose();
@@ -55,24 +73,6 @@ class _TestTabState extends State<TestTab> {
       setState(() {
         _currentUserId = userId;
       });
-    }
-  }
-
-  void _onWsMessage(Map<String, dynamic> data) {
-    if (mounted && !_disposed) {
-      setState(() {
-        _wsLog = data.toString();
-      });
-      // 不再處理 joined_room 事件，改為僅更新日誌顯示
-      // 所有聊天室跳轉都由 MainTabPage 統一處理
-      
-      // 記錄 connect_response 供調試使用
-      if (data['type'] == 'connect_response') {
-        final accept = data['accept'];
-        final from = data['from'];
-        final to = data['to'];
-        debugPrint('[TestTab] 收到 connect_response: from=$from, to=$to, accept=$accept');
-      }
     }
   }
 
