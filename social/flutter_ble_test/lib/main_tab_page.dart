@@ -10,6 +10,7 @@ import '_test_tab.dart';
 import 'chat_service_singleton.dart';
 import 'chat_page.dart';
 import 'dart:convert';
+import 'chat_models.dart';
 
 class MainTabPage extends StatefulWidget {
   const MainTabPage({super.key});
@@ -232,6 +233,24 @@ class MainTabPageState extends State<MainTabPage> {
       };
       historyJson.add(jsonEncode(newHistory));
       await prefs.setStringList('chat_history', historyJson);
+      
+      // 更新 room_ids 列表，這個列表是 chat_room_list_page.dart 用來顯示聊天室的
+      var roomIds = prefs.getStringList('room_ids') ?? [];
+      if (!roomIds.contains(roomId)) {
+        roomIds.add(roomId);
+        await prefs.setStringList('room_ids', roomIds);
+      }
+      
+      // 同時創建或更新聊天室資訊
+      final roomInfo = ChatRoomHistory(
+        roomId: roomId,
+        roomName: '與\'$otherNickname\'的聊天室',
+        lastMessage: '',
+        lastMessageTime: DateTime.now(),
+        otherUserId: otherUserId,
+        otherNickname: otherNickname,
+      );
+      await prefs.setString('chat_room_info_$roomId', jsonEncode(roomInfo.toJson()));
     }
   }
 
@@ -289,8 +308,20 @@ class MainTabPageState extends State<MainTabPage> {
       // 儲存聊天室歷史
       await _saveChatRoomHistory(roomId, '與 $otherUserId 的聊天', otherUserId);
       
+      // 加入聊天室 - 在 ChatService 中不再自動加入
+      final chatService = ChatServiceSingleton.instance;
+      await chatService.joinRoom(roomId);
+      
       // 在獲取異步數據後立即檢查 mounted
       if (!mounted) return;
+      
+      // 自動跳轉聊天室 - 無async gap後使用context
+      _navigateToChatPage(roomId, currentUserId);
+      
+      // 通知聊天室分頁刷新
+      if (ChatRoomListPage.refresh != null) {
+        ChatRoomListPage.refresh!();
+      }
       
       // 自動跳轉聊天室 - 無async gap後使用context
       _navigateToChatPage(roomId, currentUserId);

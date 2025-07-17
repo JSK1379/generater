@@ -4,7 +4,6 @@ import 'websocket_service.dart';
 import 'chat_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'chat_room_list_page.dart'; // 添加引入
 
 class ChatService extends ChangeNotifier {
   final WebSocketService _webSocketService = WebSocketService();
@@ -101,13 +100,22 @@ class ChatService extends ChangeNotifier {
         debugPrint('ChatService: 新增聊天訊息 - ${message.content}');
         notifyListeners();
         break;
+      case 'joined_room':
+        // 處理從伺服器收到的已加入房間消息
+        final roomId = data['roomId'];
+        if (roomId != null) {
+          debugPrint('[ChatService] 成功加入房間: $roomId');
+          // 房間已在 joinRoom 方法中被標記為已加入，這裡不需要再次添加
+          notifyListeners();
+        }
+        break;
       case 'room_joined':
         final room = ChatRoom.fromJson(data['room']);
         _currentRoom = room;
         if (!_chatRooms.any((r) => r.id == room.id)) {
           _chatRooms.add(room);
         }
-        _joinedRooms.add(room.id); // 將房間 ID 加入已加入房間列表
+        // 房間已在 joinRoom 方法中被標記為已加入，這裡不需要再次添加
         notifyListeners();
         break;
       case 'room_list':
@@ -147,8 +155,8 @@ class ChatService extends ChangeNotifier {
           break;
         }
         
-        // 若接受連接且服務器返回了 roomId，則自動加入聊天室
-        if (accept == true && roomId != null && roomId is String && !_joinedRooms.contains(roomId)) {
+        // 若接受連接且服務器返回了 roomId，則處理聊天歷史記錄
+        if (accept == true && roomId != null && roomId is String) {
           // 處理聊天歷史記錄（如果有）
           if (chatHistory != null && chatHistory is List) {
             for (final messageData in chatHistory) {
@@ -172,9 +180,9 @@ class ChatService extends ChangeNotifier {
             }
           }
           
-          // 自動加入聊天室
-          joinRoom(roomId);
-          debugPrint('[ChatService] 自動 join_room: $roomId');
+          // 注意：不在這裡自動加入聊天室，而是讓 MainTabPage 處理
+          // 記錄 roomId 供後續處理
+          debugPrint('[ChatService] connect_response 收到 roomId: $roomId');
         }
         
         // 通知所有監聽器
@@ -229,11 +237,14 @@ class ChatService extends ChangeNotifier {
 
     debugPrint('[ChatService] 正在加入房間: $roomId');
     final completer = Completer<bool>();
+    
+    // 預先將房間標記為已加入，避免同時發起多個加入請求
+    _joinedRooms.add(roomId);
+    
     void handler(Map<String, dynamic> data) {
       if (data['type'] == 'joined_room' && data['roomId'] == roomId) {
         _webSocketService.removeMessageListener(handler);
-        _joinedRooms.add(roomId); // 記錄已加入的房間
-        debugPrint('[ChatService] 成功加入房間: $roomId');
+        debugPrint('[ChatService] 收到 joined_room 回應: $roomId');
         completer.complete(true);
       }
     }

@@ -54,11 +54,29 @@ class _ChatRoomListPageState extends State<ChatRoomListPage> {
     
     // 針對每個聊天室 ID 分別讀取其歷史記錄
     for (final roomId in roomIds) {
+      // 首先嘗試從 chat_room_info 獲取信息
+      final roomInfoJson = prefs.getString('chat_room_info_$roomId');
+      if (roomInfoJson != null) {
+        try {
+          final roomInfo = ChatRoomHistory.fromJson(jsonDecode(roomInfoJson));
+          allHistory.add(roomInfo);
+          continue; // 如果成功獲取到聊天室信息，就不需要再讀取歷史記錄了
+        } catch (e) {
+          debugPrint('解析聊天室信息失敗: $e');
+          // 如果解析失敗，繼續嘗試讀取歷史記錄
+        }
+      }
+      
+      // 如果沒有聊天室信息，再嘗試從歷史記錄中獲取
       final roomHistoryJson = prefs.getStringList('chat_history_$roomId') ?? [];
       if (roomHistoryJson.isNotEmpty) {
-        // 讀取該聊天室的最新一條記錄作為聊天室列表顯示
-        final lastMessage = ChatRoomHistory.fromJson(jsonDecode(roomHistoryJson.last));
-        allHistory.add(lastMessage);
+        try {
+          // 讀取該聊天室的最新一條記錄作為聊天室列表顯示
+          final lastMessage = ChatRoomHistory.fromJson(jsonDecode(roomHistoryJson.last));
+          allHistory.add(lastMessage);
+        } catch (e) {
+          debugPrint('解析聊天室歷史記錄失敗: $e');
+        }
       }
     }
     
