@@ -297,8 +297,8 @@ class MainTabPageState extends State<MainTabPage> {
       
       // 先獲取聊天記錄
       final chatService = ChatServiceSingleton.instance;
-      debugPrint('[MainTabPage] 先獲取聊天室 $roomId 的歷史記錄');
-      await chatService.fetchChatHistory(roomId);
+      debugPrint('[MainTabPage] 先使用 HTTP 獲取聊天室 $roomId 的歷史記錄');
+      await chatService.fetchChatHistoryHttp(roomId);
       
       // 檢查是否仍然 mounted
       if (!mounted) return;

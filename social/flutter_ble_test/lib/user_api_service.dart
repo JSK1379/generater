@@ -134,25 +134,62 @@ class UserApiService {
   
   // 獲取聊天記錄
   Future<List<Map<String, dynamic>>?> getChatHistory(String roomId, {int limit = 50}) async {
-    try {
-      // 確保 URL 正確拼接
-      final cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
-      final uri = Uri.parse('${cleanBaseUrl}friends/chat_history/$roomId?limit=$limit');
-      final response = await http.get(uri);
-      
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final chatHistory = List<Map<String, dynamic>>.from(data['chat_history']);
-        debugPrint('[UserApiService] 獲取聊天記錄成功: roomId=$roomId, count=${chatHistory.length}');
-        return chatHistory;
-      } else {
-        debugPrint('[UserApiService] 獲取聊天記錄失敗: ${response.statusCode}, ${response.body}');
-        return null;
+    const int maxRetries = 3;
+    const Duration timeoutDuration = Duration(seconds: 10);
+    
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        debugPrint('[UserApiService] 嘗試獲取聊天記錄 (第 $attempt 次): roomId=$roomId');
+        
+        // 確保 URL 正確拼接
+        final cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
+        final uri = Uri.parse('${cleanBaseUrl}friends/chat_history/$roomId?limit=$limit');
+        
+        final response = await http.get(uri).timeout(timeoutDuration);
+        
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          
+          // 檢查回應格式 - 可能是直接的陣列或包含 chat_history 欄位的物件
+          List<dynamic>? chatHistoryData;
+          
+          if (data is List) {
+            // 直接返回陣列格式
+            chatHistoryData = data;
+            debugPrint('[UserApiService] 收到直接陣列格式的聊天記錄');
+          } else if (data is Map<String, dynamic> && data['chat_history'] != null) {
+            // 包裝在 chat_history 欄位中的格式
+            chatHistoryData = data['chat_history'];
+            debugPrint('[UserApiService] 收到包裝格式的聊天記錄');
+          }
+          
+          // 檢查聊天記錄是否存在且為列表
+          if (chatHistoryData != null) {
+            final chatHistory = List<Map<String, dynamic>>.from(chatHistoryData);
+            debugPrint('[UserApiService] 獲取聊天記錄成功: roomId=$roomId, count=${chatHistory.length}');
+            return chatHistory;
+          } else {
+            debugPrint('[UserApiService] 聊天記錄為空或格式不正確: $data');
+            return [];
+          }
+        } else {
+          debugPrint('[UserApiService] 獲取聊天記錄失敗: ${response.statusCode}, ${response.body}');
+          if (attempt == maxRetries) {
+            return null;
+          }
+        }
+      } catch (e) {
+        debugPrint('[UserApiService] 獲取聊天記錄錯誤 (第 $attempt 次): $e');
+        if (attempt == maxRetries) {
+          return null;
+        }
+        
+        // 等待一段時間後重試
+        await Future.delayed(Duration(milliseconds: 500 * attempt));
       }
-    } catch (e) {
-      debugPrint('[UserApiService] 獲取聊天記錄錯誤: $e');
-      return null;
     }
+    
+    return null;
   }
 
   void dispose() {}

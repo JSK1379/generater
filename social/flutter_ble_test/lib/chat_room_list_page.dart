@@ -106,8 +106,8 @@ class _ChatRoomListPageState extends State<ChatRoomListPage> {
     final currentUserId = await chatService.getCurrentUserId();
     
     // 先獲取聊天記錄
-    debugPrint('[ChatRoomListPage] 先獲取聊天室 ${history.roomId} 的歷史記錄');
-    await chatService.fetchChatHistory(history.roomId);
+    debugPrint('[ChatRoomListPage] 先使用 HTTP 獲取聊天室 ${history.roomId} 的歷史記錄');
+    await chatService.fetchChatHistoryHttp(history.roomId);
     
     if (!mounted) {
       // 如果不再掛載，從開啟集合中移除
