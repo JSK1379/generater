@@ -105,7 +105,17 @@ class _ChatRoomListPageState extends State<ChatRoomListPage> {
     final chatService = ChatServiceSingleton.instance;
     final currentUserId = await chatService.getCurrentUserId();
     
-    // 先加入聊天室
+    // 先獲取聊天記錄
+    debugPrint('[ChatRoomListPage] 先獲取聊天室 ${history.roomId} 的歷史記錄');
+    await chatService.fetchChatHistory(history.roomId);
+    
+    if (!mounted) {
+      // 如果不再掛載，從開啟集合中移除
+      _openManager.markRoomAsClosed(history.roomId);
+      return;
+    }
+    
+    // 然後加入聊天室
     final joinSuccess = await chatService.joinRoom(history.roomId);
     
     if (!mounted) {
@@ -124,7 +134,7 @@ class _ChatRoomListPageState extends State<ChatRoomListPage> {
       return;
     }
     
-    // 加入成功後會自動請求聊天歷史記錄，然後導航到聊天頁面
+    // 現在已經獲取了歷史記錄並加入了聊天室，導航到聊天頁面
     try {
       final result = await Navigator.push(
         context,

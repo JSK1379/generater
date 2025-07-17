@@ -295,10 +295,15 @@ class MainTabPageState extends State<MainTabPage> {
       // 儲存聊天室歷史
       await _saveChatRoomHistory(roomId, '與 $otherUserId 的聊天', otherUserId);
       
-      // 加入聊天室 - 在 ChatService 中不再自動加入
+      // 先獲取聊天記錄
       final chatService = ChatServiceSingleton.instance;
+      debugPrint('[MainTabPage] 先獲取聊天室 $roomId 的歷史記錄');
+      await chatService.fetchChatHistory(roomId);
       
-      // 使用 await 確保在後續操作前完成加入房間
+      // 檢查是否仍然 mounted
+      if (!mounted) return;
+      
+      // 然後加入聊天室
       final joinSuccess = await chatService.joinRoom(roomId);
       
       // 檢查是否仍然 mounted

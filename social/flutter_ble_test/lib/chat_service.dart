@@ -426,8 +426,7 @@ class ChatService extends ChangeNotifier {
           _joinRoomCompleters[roomId]!.complete(true);
           _joinRoomCompleters.remove(roomId);
           
-          // 成功加入房間後，請求聊天歷史記錄
-          fetchChatHistory(roomId);
+          // 不再自動獲取聊天歷史記錄，因為我們已經在進入聊天室之前先獲取了
         }
       }
     }
