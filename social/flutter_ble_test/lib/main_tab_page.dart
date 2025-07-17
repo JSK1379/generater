@@ -236,6 +236,7 @@ class MainTabPageState extends State<MainTabPage> {
   }
 
   void _onWsMessage(Map<String, dynamic> data) async {
+    // 處理 joined_room 事件
     if (data['type'] == 'joined_room' && data['roomId'] != null) {
       final roomId = data['roomId'] as String;
       final prefs = await SharedPreferences.getInstance();
@@ -247,6 +248,46 @@ class MainTabPageState extends State<MainTabPage> {
       
       // 儲存聊天室歷史
       await _saveChatRoomHistory(roomId, roomName, otherUserId);
+      
+      // 在獲取異步數據後立即檢查 mounted
+      if (!mounted) return;
+      
+      // 自動跳轉聊天室 - 無async gap後使用context
+      _navigateToChatPage(roomId, currentUserId);
+      
+      // 通知聊天室分頁刷新
+      if (ChatRoomListPage.refresh != null) {
+        ChatRoomListPage.refresh!();
+      }
+    }
+    
+    // 處理 connect_response 事件
+    if (data['type'] == 'connect_response' && data['accept'] == true && data['roomId'] != null) {
+      final roomId = data['roomId'] as String;
+      final prefs = await SharedPreferences.getInstance();
+      final currentUserId = prefs.getString('user_id') ?? 'unknown_user';
+      
+      // 取得對方用戶 ID
+      final fromUser = data['from'] as String;
+      final toUser = data['to'] as String;
+      final otherUserId = (fromUser == currentUserId) ? toUser : fromUser;
+      
+      // 處理可能的錯誤
+      if (data['error'] != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('連接錯誤: ${data['error']}')),
+          );
+        }
+        return;
+      }
+      
+      // 處理聊天歷史記錄
+      // 注意：ChatService 已經在 _handleMessage 方法中處理了 chat_history
+      // 我們這裡不需要再次處理，只需要獲取 roomId 並儲存聊天室歷史
+      
+      // 儲存聊天室歷史
+      await _saveChatRoomHistory(roomId, '與 $otherUserId 的聊天', otherUserId);
       
       // 在獲取異步數據後立即檢查 mounted
       if (!mounted) return;

@@ -78,6 +78,82 @@ class UserApiService {
       debugPrint('[UserApiService] 頭像上傳失敗: ${response.statusCode}');
     }
   }
+  
+  // 添加好友
+  Future<String?> addFriend(String userId, String friendId) async {
+    try {
+      // 確保 URL 正確拼接
+      final cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
+      final uri = Uri.parse('${cleanBaseUrl}friends/add_friend');
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': userId,
+          'friend_id': friendId,
+        }),
+      );
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final roomId = data['room_id'];
+        debugPrint('[UserApiService] 添加好友成功: userId=$userId, friendId=$friendId, roomId=$roomId');
+        return roomId;
+      } else {
+        debugPrint('[UserApiService] 添加好友失敗: ${response.statusCode}, ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('[UserApiService] 添加好友錯誤: $e');
+      return null;
+    }
+  }
+  
+  // 獲取好友列表
+  Future<List<Map<String, dynamic>>?> getFriends(String userId) async {
+    try {
+      // 確保 URL 正確拼接
+      final cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
+      final uri = Uri.parse('${cleanBaseUrl}friends/friends/$userId');
+      final response = await http.get(uri);
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final friends = List<Map<String, dynamic>>.from(data['friends']);
+        debugPrint('[UserApiService] 獲取好友列表成功: userId=$userId, count=${friends.length}');
+        return friends;
+      } else {
+        debugPrint('[UserApiService] 獲取好友列表失敗: ${response.statusCode}, ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('[UserApiService] 獲取好友列表錯誤: $e');
+      return null;
+    }
+  }
+  
+  // 獲取聊天記錄
+  Future<List<Map<String, dynamic>>?> getChatHistory(String roomId, {int limit = 50}) async {
+    try {
+      // 確保 URL 正確拼接
+      final cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
+      final uri = Uri.parse('${cleanBaseUrl}friends/chat_history/$roomId?limit=$limit');
+      final response = await http.get(uri);
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final chatHistory = List<Map<String, dynamic>>.from(data['chat_history']);
+        debugPrint('[UserApiService] 獲取聊天記錄成功: roomId=$roomId, count=${chatHistory.length}');
+        return chatHistory;
+      } else {
+        debugPrint('[UserApiService] 獲取聊天記錄失敗: ${response.statusCode}, ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('[UserApiService] 獲取聊天記錄錯誤: $e');
+      return null;
+    }
+  }
 
   void dispose() {}
 }

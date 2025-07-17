@@ -126,13 +126,52 @@ class ChatService extends ChangeNotifier {
         final toUser = data['to'];
         final accept = data['accept'];
         final roomId = data['roomId'];
+        final error = data['error'];
+        final chatHistory = data['chat_history'];
+        
         debugPrint('[ChatService] 收到 connect_response: from=$fromUser, to=$toUser, accept=$accept, roomId=$roomId');
+        
+        // 檢查是否有錯誤訊息
+        if (error != null) {
+          debugPrint('[ChatService] connect_response 錯誤: $error');
+          // 通知所有監聽器，但不做其他處理
+          for (var listener in _connectResponseListeners) {
+            listener(fromUser, toUser, false);
+          }
+          notifyListeners();
+          break;
+        }
+        
         // 若接受連接且服務器返回了 roomId，則自動加入聊天室
         if (accept == true && roomId != null && roomId is String && !_joinedRooms.contains(roomId)) {
+          // 處理聊天歷史記錄（如果有）
+          if (chatHistory != null && chatHistory is List) {
+            for (final messageData in chatHistory) {
+              if (messageData is Map<String, dynamic>) {
+                final messageId = messageData['id']?.toString() ?? '';
+                
+                // 防重複：檢查是否已處理過此訊息
+                if (!_processedMessages.contains(messageId)) {
+                  final message = ChatMessage(
+                    id: messageId,
+                    type: 'text',
+                    content: messageData['content'] ?? '',
+                    sender: messageData['sender'] ?? '',
+                    timestamp: DateTime.tryParse(messageData['timestamp'] ?? '') ?? DateTime.now(),
+                    imageUrl: messageData['image_url'],
+                  );
+                  _messages.add(message);
+                  _processedMessages.add(messageId);
+                }
+              }
+            }
+          }
+          
           // 自動加入聊天室
           joinRoom(roomId);
           debugPrint('[ChatService] 自動 join_room: $roomId');
         }
+        
         // 通知所有監聽器
         for (var listener in _connectResponseListeners) {
           listener(fromUser, toUser, accept);
