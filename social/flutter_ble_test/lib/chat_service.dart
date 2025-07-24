@@ -11,7 +11,8 @@ class ChatService extends ChangeNotifier {
   // 創建 UserApiService 實例，使用相同的 baseUrl
   final UserApiService _userApiService = UserApiService('https://near-ride-backend-api.onrender.com');
   WebSocketService get webSocketService => _webSocketService;
-  final List<ChatMessage> _messages = [];
+  // 按房間 ID 分離的訊息存儲
+  final Map<String, List<ChatMessage>> _roomMessages = <String, List<ChatMessage>>{};
   final List<ChatRoom> _chatRooms = [];
   final Set<String> _joinedRooms = <String>{}; // 已加入的房間列表
   final Set<String> _processedMessages = <String>{}; // 已處理的訊息 ID 列表
@@ -28,12 +29,28 @@ class ChatService extends ChangeNotifier {
   // 全局連接請求監聽器
   final List<void Function(String from, String to)> _connectRequestListeners = [];
 
-  List<ChatMessage> get messages => List.unmodifiable(_messages);
+  List<ChatMessage> get messages {
+    if (_currentRoom == null) return [];
+    return List.unmodifiable(_roomMessages[_currentRoom!.id] ?? []);
+  }
   List<ChatRoom> get chatRooms => List.unmodifiable(_chatRooms);
   ChatRoom? get currentRoom => _currentRoom;
   bool get isConnected => _isConnected;
   String get currentUser => _currentUser;
   Stream<bool> get connectionStateStream => _connectionStateController.stream;
+
+  // 獲取或創建房間的訊息列表
+  List<ChatMessage> _getOrCreateRoomMessages(String roomId) {
+    if (!_roomMessages.containsKey(roomId)) {
+      _roomMessages[roomId] = <ChatMessage>[];
+    }
+    return _roomMessages[roomId]!;
+  }
+
+  // 清空指定房間的訊息
+  void _clearRoomMessages(String roomId) {
+    _roomMessages[roomId] = <ChatMessage>[];
+  }
 
   ChatService() {
     _webSocketService.addMessageListener(_handleMessage);
@@ -113,8 +130,15 @@ class ChatService extends ChangeNotifier {
         final messageId = data['id'] ?? 'msg_${DateTime.now().millisecondsSinceEpoch}';
         final sender = data['sender'] ?? '';
         final content = data['content'] ?? '';
+        final roomId = data['roomId'] ?? _currentRoom?.id; // 優先使用訊息中的房間 ID，否則使用當前房間
         
         debugPrint('ChatService: 收到訊息 - $data');
+        
+        // 如果沒有房間 ID，跳過處理
+        if (roomId == null) {
+          debugPrint('ChatService: 訊息沒有房間 ID，跳過處理');
+          break;
+        }
         
         // 防重複：檢查是否已處理過此訊息
         if (_processedMessages.contains(messageId)) {
@@ -130,9 +154,12 @@ class ChatService extends ChangeNotifier {
           timestamp: DateTime.tryParse(data['timestamp'] ?? '') ?? DateTime.now(),
           imageUrl: data['imageUrl'],
         );
-        _messages.add(message);
+        
+        // 添加到對應房間的訊息列表
+        final roomMessages = _getOrCreateRoomMessages(roomId);
+        roomMessages.add(message);
         _processedMessages.add(messageId); // 記錄已處理的訊息
-        debugPrint('ChatService: 新增聊天訊息 - ${message.content}');
+        debugPrint('ChatService: 新增聊天訊息到房間 $roomId - ${message.content}');
         notifyListeners();
         break;
       case 'joined_room':
@@ -489,10 +516,9 @@ class ChatService extends ChangeNotifier {
       if (chatHistory != null && chatHistory.isNotEmpty) {
         debugPrint('[ChatService] HTTP 收到聊天室 $roomId 的歷史記錄，共 ${chatHistory.length} 條訊息');
         
-        // 清空當前房間的訊息列表
-        if (_currentRoom?.id == roomId) {
-          _messages.clear();
-        }
+        // 清空該房間的訊息列表
+        _clearRoomMessages(roomId);
+        final roomMessages = _getOrCreateRoomMessages(roomId);
         
         // 處理聊天歷史記錄
         for (final messageData in chatHistory) {
@@ -509,9 +535,9 @@ class ChatService extends ChangeNotifier {
               imageUrl: messageData['image_url'],
             );
             
-            _messages.add(message);
+            roomMessages.add(message);
             _processedMessages.add(messageId);
-            debugPrint('[ChatService] 添加歷史訊息: ${message.content}');
+            debugPrint('[ChatService] 添加歷史訊息到房間 $roomId: ${message.content}');
           }
         }
         
@@ -525,10 +551,8 @@ class ChatService extends ChangeNotifier {
         _saveMessagesToLocalStorage(roomId);
       } else if (chatHistory != null && chatHistory.isEmpty) {
         debugPrint('[ChatService] 聊天室 $roomId 的歷史記錄為空');
-        // 清空當前房間的訊息列表
-        if (_currentRoom?.id == roomId) {
-          _messages.clear();
-        }
+        // 清空該房間的訊息列表
+        _clearRoomMessages(roomId);
         
         // 標記該房間歷史記錄已獲取（即使為空）
         _fetchedHistoryRooms.add(roomId);
@@ -556,8 +580,9 @@ class ChatService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final List<String> historyJson = [];
     
-    // 篩選出屬於該房間的消息
-    for (final message in _messages) {
+    // 獲取該房間的所有消息
+    final roomMessages = _roomMessages[roomId] ?? [];
+    for (final message in roomMessages) {
       historyJson.add(jsonEncode(message.toJson()));
     }
     
@@ -565,8 +590,8 @@ class ChatService extends ChangeNotifier {
     debugPrint('[ChatService] 已保存聊天室 $roomId 的歷史記錄到本地，共 ${historyJson.length} 條訊息');
     
     // 如果有訊息，更新最後一條訊息
-    if (_messages.isNotEmpty && _currentRoom != null) {
-      final lastMessage = _messages.last;
+    if (roomMessages.isNotEmpty) {
+      final lastMessage = roomMessages.last;
       
       // 更新聊天室資訊
       await _updateChatRoomInfo(roomId, lastMessage);
@@ -585,13 +610,10 @@ class ChatService extends ChangeNotifier {
       final allKeys = prefs.getKeys().where((key) => key.startsWith('chat_history_'));
       debugPrint('[ChatService] 本地儲存的聊天記錄 keys: ${allKeys.toList()}');
       
-      // 清空當前房間的訊息列表
-      if (_currentRoom?.id == roomId) {
-        _messages.clear();
-        debugPrint('[ChatService] 已清空當前房間 $_currentRoom 的訊息列表');
-      } else {
-        debugPrint('[ChatService] 當前房間 $_currentRoom 與請求房間 $roomId 不匹配，不清空訊息');
-      }
+      // 清空該房間的訊息列表
+      _clearRoomMessages(roomId);
+      final roomMessages = _getOrCreateRoomMessages(roomId);
+      debugPrint('[ChatService] 已清空房間 $roomId 的訊息列表');
       
       // 加載本地訊息
       int loadedCount = 0;
@@ -613,10 +635,10 @@ class ChatService extends ChangeNotifier {
               imageUrl: messageData['imageUrl'],
             );
             
-            _messages.add(message);
+            roomMessages.add(message);
             _processedMessages.add(messageId);
             loadedCount++;
-            debugPrint('[ChatService] 成功加載訊息: ${message.content}');
+            debugPrint('[ChatService] 成功加載訊息到房間 $roomId: ${message.content}');
           } else {
             debugPrint('[ChatService] 跳過重複訊息: $messageId');
           }
@@ -628,7 +650,7 @@ class ChatService extends ChangeNotifier {
       // 通知 UI 更新
       notifyListeners();
       
-      debugPrint('[ChatService] 從本地儲存加載完成，實際加載 $loadedCount 條訊息，總共 ${_messages.length} 條訊息');
+      debugPrint('[ChatService] 從本地儲存加載完成，實際加載 $loadedCount 條訊息，總共 ${roomMessages.length} 條訊息');
     } catch (e) {
       debugPrint('[ChatService] 從本地儲存加載聊天記錄錯誤: $e');
     }
@@ -730,8 +752,11 @@ class ChatService extends ChangeNotifier {
         'roomId': _currentRoom!.id,
         'user': _currentUser,
       });
+      
+      // 清空當前房間的訊息
+      final currentRoomId = _currentRoom!.id;
       _currentRoom = null;
-      _messages.clear();
+      _clearRoomMessages(currentRoomId);
       notifyListeners();
     }
   }
@@ -740,7 +765,7 @@ class ChatService extends ChangeNotifier {
   void disconnect() {
     _webSocketService.disconnect();
     _currentRoom = null;
-    _messages.clear();
+    // 斷線時不需要清空所有房間的訊息，保留本地數據
     _chatRooms.clear();
     notifyListeners();
   }
