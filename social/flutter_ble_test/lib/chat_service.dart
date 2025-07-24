@@ -540,16 +540,26 @@ class ChatService extends ChangeNotifier {
       
       debugPrint('[ChatService] 從本地儲存加載聊天室 $roomId 的歷史記錄，共 ${roomHistoryJson.length} 條訊息');
       
+      // 顯示本地儲存的所有 key，幫助調試
+      final allKeys = prefs.getKeys().where((key) => key.startsWith('chat_history_'));
+      debugPrint('[ChatService] 本地儲存的聊天記錄 keys: ${allKeys.toList()}');
+      
       // 清空當前房間的訊息列表
       if (_currentRoom?.id == roomId) {
         _messages.clear();
+        debugPrint('[ChatService] 已清空當前房間 $_currentRoom 的訊息列表');
+      } else {
+        debugPrint('[ChatService] 當前房間 $_currentRoom 與請求房間 $roomId 不匹配，不清空訊息');
       }
       
       // 加載本地訊息
+      int loadedCount = 0;
       for (final messageJson in roomHistoryJson) {
         try {
           final messageData = jsonDecode(messageJson);
           final messageId = messageData['id']?.toString() ?? '';
+          
+          debugPrint('[ChatService] 嘗試加載訊息: id=$messageId, content=${messageData['content']}');
           
           // 防重複：檢查是否已處理過此訊息
           if (!_processedMessages.contains(messageId)) {
@@ -564,16 +574,20 @@ class ChatService extends ChangeNotifier {
             
             _messages.add(message);
             _processedMessages.add(messageId);
+            loadedCount++;
+            debugPrint('[ChatService] 成功加載訊息: ${message.content}');
+          } else {
+            debugPrint('[ChatService] 跳過重複訊息: $messageId');
           }
         } catch (e) {
-          debugPrint('[ChatService] 解析本地訊息錯誤: $e');
+          debugPrint('[ChatService] 解析本地訊息錯誤: $e，原始數據: $messageJson');
         }
       }
       
       // 通知 UI 更新
       notifyListeners();
       
-      debugPrint('[ChatService] 從本地儲存加載完成，共 ${_messages.length} 條訊息');
+      debugPrint('[ChatService] 從本地儲存加載完成，實際加載 $loadedCount 條訊息，總共 ${_messages.length} 條訊息');
     } catch (e) {
       debugPrint('[ChatService] 從本地儲存加載聊天記錄錯誤: $e');
     }

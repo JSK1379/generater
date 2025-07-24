@@ -37,12 +37,12 @@ class _ChatPageState extends State<ChatPage> {
       if (mounted) {
         widget.chatService.setCurrentUser(widget.currentUser);
         
+        // 設置當前房間，確保顯示正確的聊天室（無論是否連線）
+        widget.chatService.setCurrentRoom(widget.roomId);
+        
         // 如果還沒連線，先連線到 WebSocket 伺服器
         if (!widget.chatService.isConnected) {
           _connectToWebSocket();
-        } else {
-          // 如果已經連線，則設置當前房間，確保顯示正確的聊天室
-          widget.chatService.setCurrentRoom(widget.roomId);
         }
         
         // 監聽訊息變化，自動捲動到底部
