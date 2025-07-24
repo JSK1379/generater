@@ -197,6 +197,7 @@ class _ChatPageState extends State<ChatPage> {
               ),
               child: StreamBuilder<bool>(
                 stream: widget.chatService.connectionStateStream,
+                initialData: widget.chatService.isConnected, // 添加初始數據
                 builder: (context, snapshot) {
                   final isConnected = snapshot.data ?? false;
                   

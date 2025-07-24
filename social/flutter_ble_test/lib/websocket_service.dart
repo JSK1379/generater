@@ -48,13 +48,7 @@ class WebSocketService {
         listener(true);
       }
 
-  // 清理過期的已處理消息記錄
-  void cleanupProcessedMessages() {
-    final now = DateTime.now();
-    _processedMessages.removeWhere((_, timestamp) {
-      return now.difference(timestamp).inMinutes > 5; // 保留最近5分鐘的記錄
-    });
-  }  // 添加監聽器
+      // 添加監聽器
       _socket!.listen(
         (data) {
           try {
@@ -91,29 +85,34 @@ class WebSocketService {
               listener(message);
             }
           } catch (e) {
-            debugPrint('解析訊息失敗: $e');
+            debugPrint('[WebSocket] 解析訊息錯誤: $e');
           }
         },
         onError: (error) {
-          debugPrint('WebSocket 錯誤: $error');
+          debugPrint('[WebSocket] 連線錯誤: $error');
           _handleDisconnection();
         },
         onDone: () {
-          debugPrint('WebSocket 連線已關閉');
+          debugPrint('[WebSocket] 連線關閉');
           _handleDisconnection();
         },
       );
 
-      debugPrint('WebSocket 連線成功: $url');
+      debugPrint('[WebSocket] 連線成功: $url');
       return true;
     } catch (e) {
-      debugPrint('WebSocket 連線失敗: $e');
-      _isConnected = false;
-      for (final listener in _connectionListeners) {
-        listener(false);
-      }
+      debugPrint('[WebSocket] 連線失敗: $e');
+      _handleDisconnection();
       return false;
     }
+  }
+
+  // 清理過期的已處理消息記錄
+  void cleanupProcessedMessages() {
+    final now = DateTime.now();
+    _processedMessages.removeWhere((_, timestamp) {
+      return now.difference(timestamp).inMinutes > 5; // 保留最近5分鐘的記錄
+    });
   }
 
   // 處理斷線
@@ -126,7 +125,7 @@ class WebSocketService {
     // 嘗試重連
     if (_reconnectAttempts < maxReconnectAttempts && _currentUrl != null) {
       _reconnectAttempts++;
-      debugPrint('嘗試重連 ($_reconnectAttempts/$maxReconnectAttempts)...');
+      debugPrint('[WebSocket] 嘗試重連 ($_reconnectAttempts/$maxReconnectAttempts)...');
       Future.delayed(Duration(seconds: _reconnectAttempts * 2), () {
         if (!_isConnected) {
           connect(_currentUrl!);
@@ -143,19 +142,20 @@ class WebSocketService {
         debugPrint('[WebSocket] 發送訊息: $jsonMessage');
         _socket!.add(jsonMessage);
       } catch (e) {
-        debugPrint('發送訊息失敗: $e');
+        debugPrint('[WebSocket] 發送訊息失敗: $e');
       }
     } else {
-      debugPrint('WebSocket 未連線，無法發送訊息');
+      debugPrint('[WebSocket] 無法發送訊息，連線未建立');
     }
   }
 
   // 斷開連線
   void disconnect() {
-    _socket?.close();
+    if (_socket != null) {
+      _socket!.close();
+      _socket = null;
+    }
     _isConnected = false;
-    _currentUrl = null;
-    _reconnectAttempts = 0;
     for (final listener in List<Function(bool)>.from(_connectionListeners)) {
       listener(false);
     }
@@ -166,5 +166,6 @@ class WebSocketService {
     disconnect();
     _messageListeners.clear();
     _connectionListeners.clear();
+    _processedMessages.clear();
   }
 }

@@ -55,6 +55,9 @@ class ChatService extends ChangeNotifier {
   ChatService() {
     _webSocketService.addMessageListener(_handleMessage);
     _webSocketService.addConnectionListener(_handleConnectionChange);
+    
+    // 發送初始連線狀態
+    _connectionStateController.add(_isConnected);
   }
 
   // 設定當前用戶
