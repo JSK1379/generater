@@ -17,6 +17,7 @@ class ChatService extends ChangeNotifier {
   final Set<String> _joinedRooms = <String>{}; // 已加入的房間列表
   final Set<String> _processedMessages = <String>{}; // 已處理的訊息 ID 列表
   final Set<String> _fetchedHistoryRooms = <String>{}; // 已獲取歷史記錄的房間列表
+  final Set<String> _registeredUsers = <String>{}; // 已註冊的用戶列表
   ChatRoom? _currentRoom;
   bool _isConnected = false;
   String _currentUser = '';
@@ -30,8 +31,14 @@ class ChatService extends ChangeNotifier {
   final List<void Function(String from, String to)> _connectRequestListeners = [];
 
   List<ChatMessage> get messages {
-    if (_currentRoom == null) return [];
-    return List.unmodifiable(_roomMessages[_currentRoom!.id] ?? []);
+    debugPrint('[ChatService] 獲取訊息 - 當前房間: ${_currentRoom?.id}');
+    if (_currentRoom == null) {
+      debugPrint('[ChatService] 當前房間為 null，返回空列表');
+      return [];
+    }
+    final roomMessages = _roomMessages[_currentRoom!.id] ?? [];
+    debugPrint('[ChatService] 房間 ${_currentRoom!.id} 有 ${roomMessages.length} 條訊息');
+    return List.unmodifiable(roomMessages);
   }
   List<ChatRoom> get chatRooms => List.unmodifiable(_chatRooms);
   ChatRoom? get currentRoom => _currentRoom;
@@ -162,7 +169,12 @@ class ChatService extends ChangeNotifier {
         final roomMessages = _getOrCreateRoomMessages(roomId);
         roomMessages.add(message);
         _processedMessages.add(messageId); // 記錄已處理的訊息
+        
         debugPrint('ChatService: 新增聊天訊息到房間 $roomId - ${message.content}');
+        debugPrint('ChatService: 房間 $roomId 現在有 ${roomMessages.length} 條訊息');
+        debugPrint('ChatService: 當前房間: ${_currentRoom?.id}');
+        debugPrint('ChatService: 房間匹配: ${_currentRoom?.id == roomId}');
+        
         notifyListeners();
         break;
       case 'joined_room':
@@ -376,6 +388,26 @@ class ChatService extends ChangeNotifier {
         debugPrint('[ChatService] 收到 room_created: roomId=$roomId');
         notifyListeners();
         break;
+      case 'user_registered':
+        // 處理用戶註冊成功回應
+        final success = data['success'] ?? false;
+        final userId = data['userId'];
+        final message = data['message'];
+        
+        debugPrint('[ChatService] 收到 user_registered: success=$success, userId=$userId, message=$message');
+        
+        if (success == true && userId != null) {
+          debugPrint('[ChatService] 用戶註冊成功: $userId');
+          _registeredUsers.add(userId.toString()); // 標記為已註冊
+        } else {
+          debugPrint('[ChatService] 用戶註冊失敗: $message');
+          // 註冊失敗時從已註冊列表中移除（如果存在）
+          if (userId != null) {
+            _registeredUsers.remove(userId.toString());
+          }
+        }
+        notifyListeners();
+        break;
     }
   }
 
@@ -384,8 +416,10 @@ class ChatService extends ChangeNotifier {
     _isConnected = connected;
     _connectionStateController.add(connected); // 通知 Stream
     if (!connected) {
-      // 連線斷開時清空當前房間
+      // 連線斷開時清空當前房間和已註冊用戶列表
       _currentRoom = null;
+      _registeredUsers.clear(); // 清空已註冊用戶，重連時需要重新註冊
+      debugPrint('[ChatService] 連線斷開，已清空註冊狀態');
     }
     notifyListeners();
   }
@@ -814,13 +848,23 @@ class ChatService extends ChangeNotifier {
 
   // 確保用戶已註冊（在發送其他請求前調用）
   void ensureUserRegistered(String userId) {
-    if (_isConnected) {
-      _webSocketService.sendMessage({
-        'type': 'register_user',
-        'userId': userId,
-      });
-      debugPrint('[ChatService] 確保用戶已註冊: $userId');
+    if (!_isConnected) {
+      debugPrint('[ChatService] 無法註冊用戶，WebSocket 未連接: $userId');
+      return;
     }
+    
+    // 檢查是否已經註冊過
+    if (_registeredUsers.contains(userId)) {
+      debugPrint('[ChatService] 用戶已註冊過，跳過重複註冊: $userId');
+      return;
+    }
+    
+    debugPrint('[ChatService] 開始用戶註冊: $userId');
+    _webSocketService.sendMessage({
+      'type': 'register_user',
+      'userId': userId,
+    });
+    debugPrint('[ChatService] 已發送用戶註冊請求: $userId');
   }
 
   // 根據用戶 ID 獲取暱稱

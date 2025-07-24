@@ -90,10 +90,11 @@ class WebSocketService {
         },
         onError: (error) {
           debugPrint('[WebSocket] 連線錯誤: $error');
+          debugPrint('[WebSocket] 錯誤類型: ${error.runtimeType}');
           _handleDisconnection();
         },
         onDone: () {
-          debugPrint('[WebSocket] 連線關閉');
+          debugPrint('[WebSocket] 連線關閉 - 伺服器主動關閉連線');
           _handleDisconnection();
         },
       );
@@ -117,6 +118,7 @@ class WebSocketService {
 
   // 處理斷線
   void _handleDisconnection() {
+    debugPrint('[WebSocket] 處理斷線 - 當前連線狀態: $_isConnected');
     _isConnected = false;
     for (final listener in List<Function(bool)>.from(_connectionListeners)) {
       listener(false);
@@ -128,9 +130,12 @@ class WebSocketService {
       debugPrint('[WebSocket] 嘗試重連 ($_reconnectAttempts/$maxReconnectAttempts)...');
       Future.delayed(Duration(seconds: _reconnectAttempts * 2), () {
         if (!_isConnected) {
+          debugPrint('[WebSocket] 執行重連...');
           connect(_currentUrl!);
         }
       });
+    } else {
+      debugPrint('[WebSocket] 已達到最大重連次數或沒有 URL，停止重連');
     }
   }
 
