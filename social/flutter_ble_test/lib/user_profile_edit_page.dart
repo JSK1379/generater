@@ -78,7 +78,10 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
       debugPrint('[UserProfileEdit] 測試用戶列表端點: $usersListCheck');
       
       final usersResponse = await http.get(usersListCheck).timeout(const Duration(seconds: 10));
-      debugPrint('[UserProfileEdit] 用戶列表回應: ${usersResponse.statusCode} - ${usersResponse.body.substring(0, 200)}...');
+      final responseBodyPreview = usersResponse.body.length > 200 
+          ? '${usersResponse.body.substring(0, 200)}...'
+          : usersResponse.body;
+      debugPrint('[UserProfileEdit] 用戶列表回應: ${usersResponse.statusCode} - $responseBodyPreview');
       
     } catch (e) {
       debugPrint('[UserProfileEdit] 伺服器連線測試失敗: $e');

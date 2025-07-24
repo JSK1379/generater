@@ -59,8 +59,19 @@ class _AvatarPageState extends State<AvatarPage> {
         const baseUrl = 'https://near-ride-backend-api.onrender.com/';
         final userApi = UserApiService(baseUrl);
         debugPrint('開始上傳頭貼');
-        await userApi.uploadAvatar(userId, _base64Image!);
+        final avatarUrl = await userApi.uploadAvatar(userId, _base64Image!);
         debugPrint('頭貼上傳結束');
+        
+        if (avatarUrl != null) {
+          debugPrint('獲得頭像 URL: $avatarUrl');
+          // 保存頭像 URL 到 SharedPreferences
+          await prefs.setString('avatar_url', avatarUrl);
+          // 更新當前頭像為網路圖片
+          AvatarPage.currentAvatarImage = NetworkImage(avatarUrl);
+        } else {
+          debugPrint('沒有獲得頭像 URL，使用本地圖片');
+        }
+        
         userApi.dispose();
       }
     } else if (_imageUrl != null) {

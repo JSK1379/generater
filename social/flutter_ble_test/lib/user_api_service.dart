@@ -64,18 +64,41 @@ class UserApiService {
     debugPrint('[UserApiService] uploadUserId: $userId');
   }
 
-  Future<void> uploadAvatar(String userId, String base64Image) async {
-    // 將 base64 字串轉為 Uint8List
-    Uint8List imageBytes = base64Decode(base64Image);
-    final uri = Uri.parse(baseUrl); // 直接用 baseUrl，不拼接 upload_avatar
-    final request = http.MultipartRequest('POST', uri)
-      ..fields['user_id'] = userId
-      ..files.add(http.MultipartFile.fromBytes('avatar', imageBytes, filename: 'avatar.png'));
-    final response = await request.send();
-    if (response.statusCode == 200) {
-      debugPrint('[UserApiService] 頭像上傳成功 (user_id: $userId)');
-    } else {
-      debugPrint('[UserApiService] 頭像上傳失敗: ${response.statusCode}');
+  Future<String?> uploadAvatar(String userId, String base64Image) async {
+    try {
+      // 將 base64 字串轉為 Uint8List
+      Uint8List imageBytes = base64Decode(base64Image);
+      final uri = Uri.parse(baseUrl); // 直接用 baseUrl，不拼接 upload_avatar
+      final request = http.MultipartRequest('POST', uri)
+        ..fields['user_id'] = userId
+        ..files.add(http.MultipartFile.fromBytes('avatar', imageBytes, filename: 'avatar.png'));
+      final response = await request.send();
+      
+      if (response.statusCode == 200) {
+        final responseBody = await response.stream.bytesToString();
+        debugPrint('[UserApiService] 頭像上傳成功 (user_id: $userId)，回應: $responseBody');
+        
+        try {
+          final data = jsonDecode(responseBody);
+          final avatarUrl = data['avatar_url'] ?? data['url'] ?? data['image_url'];
+          if (avatarUrl != null) {
+            debugPrint('[UserApiService] 獲得頭像 URL: $avatarUrl');
+            return avatarUrl.toString();
+          } else {
+            debugPrint('[UserApiService] 伺服器回應中沒有頭像 URL: $data');
+            return null;
+          }
+        } catch (e) {
+          debugPrint('[UserApiService] 解析回應 JSON 失敗: $e，原始回應: $responseBody');
+          return null;
+        }
+      } else {
+        debugPrint('[UserApiService] 頭像上傳失敗: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('[UserApiService] 頭像上傳錯誤: $e');
+      return null;
     }
   }
   
