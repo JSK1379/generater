@@ -390,13 +390,16 @@ class ChatService extends ChangeNotifier {
         break;
       case 'user_registered':
         // 處理用戶註冊成功回應
-        final success = data['success'] ?? false;
+        final success = data['success'];
         final userId = data['userId'];
         final message = data['message'];
         
         debugPrint('[ChatService] 收到 user_registered: success=$success, userId=$userId, message=$message');
         
-        if (success == true && userId != null) {
+        // 如果沒有明確的 success 字段，但有 userId，視為註冊成功
+        final isSuccess = (success == true) || (success == null && userId != null);
+        
+        if (isSuccess && userId != null) {
           debugPrint('[ChatService] 用戶註冊成功: $userId');
           _registeredUsers.add(userId.toString()); // 標記為已註冊
         } else {
