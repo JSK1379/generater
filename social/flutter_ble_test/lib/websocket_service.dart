@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 class WebSocketService {
@@ -10,6 +11,7 @@ class WebSocketService {
   String? _currentUrl;
   int _reconnectAttempts = 0;
   static const int maxReconnectAttempts = 5;
+  Timer? _heartbeatTimer;
   
   // 新增：用於防止重複處理相同的 'joined_room' 消息
   final Map<String, DateTime> _processedMessages = {};
@@ -38,8 +40,23 @@ class WebSocketService {
   // 連接 WebSocket
   Future<bool> connect(String url) async {
     try {
+      debugPrint('[WebSocket] 開始連接: $url');
       _currentUrl = url;
-      _socket = await WebSocket.connect(url);
+      
+      // 創建 WebSocket 連接，增加超時處理
+      _socket = await WebSocket.connect(
+        url,
+        headers: {
+          'User-Agent': 'Flutter-App/1.0',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          debugPrint('[WebSocket] 連接超時');
+          throw Exception('WebSocket connection timeout');
+        },
+      );
+      
       _isConnected = true;
       _reconnectAttempts = 0;
       
@@ -100,6 +117,10 @@ class WebSocketService {
       );
 
       debugPrint('[WebSocket] 連線成功: $url');
+      
+      // 啟動心跳機制（每30秒發送一次心跳）
+      _startHeartbeat();
+      
       return true;
     } catch (e) {
       debugPrint('[WebSocket] 連線失敗: $e');
@@ -120,6 +141,8 @@ class WebSocketService {
   void _handleDisconnection() {
     debugPrint('[WebSocket] 處理斷線 - 當前連線狀態: $_isConnected');
     _isConnected = false;
+    _stopHeartbeat(); // 停止心跳
+    
     for (final listener in List<Function(bool)>.from(_connectionListeners)) {
       listener(false);
     }
@@ -139,6 +162,30 @@ class WebSocketService {
     }
   }
 
+  // 啟動心跳機制
+  void _startHeartbeat() {
+    _stopHeartbeat(); // 先停止之前的心跳
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (_isConnected && _socket != null) {
+        try {
+          debugPrint('[WebSocket] 發送心跳');
+          _socket!.add(jsonEncode({'type': 'ping'}));
+        } catch (e) {
+          debugPrint('[WebSocket] 心跳發送失敗: $e');
+          _handleDisconnection();
+        }
+      } else {
+        _stopHeartbeat();
+      }
+    });
+  }
+
+  // 停止心跳機制
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+
   // 發送訊息
   void sendMessage(Map<String, dynamic> message) {
     if (_isConnected && _socket != null) {
@@ -156,6 +203,7 @@ class WebSocketService {
 
   // 斷開連線
   void disconnect() {
+    _stopHeartbeat(); // 停止心跳
     if (_socket != null) {
       _socket!.close();
       _socket = null;
@@ -168,6 +216,7 @@ class WebSocketService {
 
   // 清理資源
   void dispose() {
+    _stopHeartbeat(); // 停止心跳
     disconnect();
     _messageListeners.clear();
     _connectionListeners.clear();
