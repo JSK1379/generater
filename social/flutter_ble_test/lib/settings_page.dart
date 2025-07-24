@@ -10,6 +10,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'main_tab_page.dart';
 import 'settings_ble_helper.dart';
+import 'user_profile_edit_page.dart';
 
 class SettingsPage extends StatefulWidget {
   final bool isAdvertising;
@@ -302,13 +303,47 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    if (_userId != null && _userId!.isNotEmpty)
+                    if (_userId != null && _userId!.isNotEmpty) ...[
                       Center(
                         child: Text(
                           '用戶 ID：$_userId',
                           style: const TextStyle(fontSize: 14, color: Colors.blueGrey),
                         ),
                       ),
+                      const SizedBox(height: 8),
+                      Center(
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            if (_userId != null && _userId!.isNotEmpty) {
+                              final result = await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => UserProfileEditPage(
+                                    userId: _userId!,
+                                    initialNickname: widget.nicknameController.text,
+                                  ),
+                                ),
+                              );
+                              
+                              // 如果用戶資料有更新，重新載入暱稱
+                              if (result == true) {
+                                final prefs = await SharedPreferences.getInstance();
+                                final newNickname = prefs.getString('nickname') ?? '';
+                                if (newNickname.isNotEmpty) {
+                                  widget.nicknameController.text = newNickname;
+                                }
+                              }
+                            }
+                          },
+                          icon: const Icon(Icons.edit),
+                          label: const Text('編輯用戶資料'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     const Text('暱稱', style: TextStyle(fontSize: 16)),
                     TextField(
