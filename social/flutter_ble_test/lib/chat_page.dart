@@ -37,7 +37,8 @@ class _ChatPageState extends State<ChatPage> {
       if (mounted) {
         widget.chatService.setCurrentUser(widget.currentUser);
         
-        // 設置當前房間，確保顯示正確的聊天室（無論是否連線）
+        // 確保房間對象存在，然後設置當前房間
+        debugPrint('[ChatPage] 嘗試設置當前房間: ${widget.roomId}');
         widget.chatService.setCurrentRoom(widget.roomId);
         
         // 如果還沒連線，先連線到 WebSocket 伺服器
@@ -92,6 +93,17 @@ class _ChatPageState extends State<ChatPage> {
   void _sendMessage() {
     final text = _messageController.text.trim();
     if (text.isNotEmpty) {
+      // 檢查 WebSocket 連線狀態
+      if (!widget.chatService.isConnected) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('無法傳送訊息：未連線到伺服器'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+      
       widget.chatService.sendTextMessage(
         widget.roomId,
         widget.currentUser,
@@ -183,30 +195,40 @@ class _ChatPageState extends State<ChatPage> {
                   top: BorderSide(color: Colors.grey.shade300),
                 ),
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      decoration: const InputDecoration(
-                        hintText: '輸入訊息...',
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
+              child: StreamBuilder<bool>(
+                stream: widget.chatService.connectionStateStream,
+                builder: (context, snapshot) {
+                  final isConnected = snapshot.data ?? false;
+                  
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _messageController,
+                          enabled: isConnected,
+                          decoration: InputDecoration(
+                            hintText: isConnected ? '輸入訊息...' : '連線中，請稍候...',
+                            border: const OutlineInputBorder(),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                          ),
+                          onSubmitted: isConnected ? (_) => _sendMessage() : null,
+                          maxLines: null,
                         ),
                       ),
-                      onSubmitted: (_) => _sendMessage(),
-                      maxLines: null,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: _sendMessage,
-                    icon: const Icon(Icons.send),
-                    color: Theme.of(context).primaryColor,
-                  ),
-                ],
+                      const SizedBox(width: 8),
+                      IconButton(
+                        onPressed: isConnected ? _sendMessage : null,
+                        icon: const Icon(Icons.send),
+                        color: isConnected 
+                          ? Theme.of(context).primaryColor 
+                          : Colors.grey,
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
           ],

@@ -15,9 +15,13 @@ class ChatService extends ChangeNotifier {
   final List<ChatRoom> _chatRooms = [];
   final Set<String> _joinedRooms = <String>{}; // 已加入的房間列表
   final Set<String> _processedMessages = <String>{}; // 已處理的訊息 ID 列表
+  final Set<String> _fetchedHistoryRooms = <String>{}; // 已獲取歷史記錄的房間列表
   ChatRoom? _currentRoom;
   bool _isConnected = false;
   String _currentUser = '';
+  
+  // 連線狀態 Stream
+  final StreamController<bool> _connectionStateController = StreamController<bool>.broadcast();
   
   // 連接請求回調監聽器
   final List<void Function(String from, String to, bool accept)> _connectResponseListeners = [];
@@ -29,6 +33,7 @@ class ChatService extends ChangeNotifier {
   ChatRoom? get currentRoom => _currentRoom;
   bool get isConnected => _isConnected;
   String get currentUser => _currentUser;
+  Stream<bool> get connectionStateStream => _connectionStateController.stream;
 
   ChatService() {
     _webSocketService.addMessageListener(_handleMessage);
@@ -46,6 +51,9 @@ class ChatService extends ChangeNotifier {
   
   // 設定當前聊天室
   void setCurrentRoom(String roomId) {
+    // 確保房間對象存在
+    _ensureRoomExists(roomId);
+    
     // 尋找房間對象
     final rooms = _chatRooms.where((room) => room.id == roomId).toList();
     if (rooms.isNotEmpty) {
@@ -344,6 +352,7 @@ class ChatService extends ChangeNotifier {
   // 處理連線狀態變化
   void _handleConnectionChange(bool connected) {
     _isConnected = connected;
+    _connectionStateController.add(connected); // 通知 Stream
     if (!connected) {
       // 連線斷開時清空當前房間
       _currentRoom = null;
@@ -375,8 +384,7 @@ class ChatService extends ChangeNotifier {
     // 防呆：檢查是否已加入此房間
     if (_joinedRooms.contains(roomId)) {
       debugPrint('[ChatService] 房間 $roomId 已加入，跳過重複 join');
-      // 即使已經加入，仍然請求一次聊天歷史記錄
-      fetchChatHistory(roomId);
+      // 已經加入的房間不需要再次獲取歷史記錄，因為我們在進入聊天室之前已經獲取了
       return true;
     }
     
@@ -443,9 +451,35 @@ class ChatService extends ChangeNotifier {
     return completer.future;
   }
 
+  // 確保房間對象存在
+  void _ensureRoomExists(String roomId) {
+    // 檢查是否已經存在該房間
+    final existingRoom = _chatRooms.where((room) => room.id == roomId).toList();
+    if (existingRoom.isEmpty) {
+      // 如果房間不存在，創建一個新的房間對象
+      final newRoom = ChatRoom(
+        id: roomId,
+        name: roomId, // 可以根據需要設置更好的名稱
+        participants: [], // 暫時為空，後續可以填充
+        createdAt: DateTime.now(),
+      );
+      _chatRooms.add(newRoom);
+      debugPrint('[ChatService] 創建新房間對象: $roomId');
+    }
+  }
+
   // 使用 HTTP 獲取聊天歷史記錄
   Future<void> fetchChatHistoryHttp(String roomId) async {
     debugPrint('[ChatService] 使用 HTTP 請求聊天室 $roomId 的歷史記錄');
+    
+    // 檢查是否已經獲取過歷史記錄，如果是則跳過
+    if (_fetchedHistoryRooms.contains(roomId)) {
+      debugPrint('[ChatService] 聊天室 $roomId 的歷史記錄已經獲取過，跳過重複獲取');
+      return;
+    }
+    
+    // 確保房間對象存在
+    _ensureRoomExists(roomId);
     
     try {
       // 使用 UserApiService 獲取聊天記錄
@@ -481,6 +515,9 @@ class ChatService extends ChangeNotifier {
           }
         }
         
+        // 標記該房間歷史記錄已獲取
+        _fetchedHistoryRooms.add(roomId);
+        
         // 通知 UI 更新
         notifyListeners();
         
@@ -492,6 +529,10 @@ class ChatService extends ChangeNotifier {
         if (_currentRoom?.id == roomId) {
           _messages.clear();
         }
+        
+        // 標記該房間歷史記錄已獲取（即使為空）
+        _fetchedHistoryRooms.add(roomId);
+        
         // 通知 UI 更新
         notifyListeners();
       } else {
@@ -849,6 +890,9 @@ class ChatService extends ChangeNotifier {
       }
     }
     _joinRoomCompleters.clear();
+    
+    // 關閉 StreamController
+    _connectionStateController.close();
     
     // 清理 WebSocket 連接
     _webSocketService.dispose();
