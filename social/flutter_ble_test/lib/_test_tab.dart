@@ -36,29 +36,34 @@ class _TestTabState extends State<TestTab> {
     _loadCurrentUserId();
     _disposed = false;
     
-    // 設置定時器，每3秒更新一次日誌顯示（降低頻率）
-    _logUpdateTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+    // 設置定時器，每5秒更新一次日誌顯示（進一步降低頻率）
+    _logUpdateTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (mounted && !_disposed) {
-        setState(() {
-          // 只有在有當前房間時才更新日誌顯示，避免重複的 null 房間日誌
-          final chatService = ChatServiceSingleton.instance;
+        final chatService = ChatServiceSingleton.instance;
+        String newLog = '';
+        
+        if (chatService.isConnected) {
           if (chatService.currentRoom != null) {
             final recentMessages = chatService.messages;
             if (recentMessages.isNotEmpty) {
               final lastMsg = recentMessages.last;
-              _wsLog = '最近消息: {type: message, sender: ${lastMsg.sender}, content: ${lastMsg.content}}';
+              newLog = '最近消息: {type: message, sender: ${lastMsg.sender}, content: ${lastMsg.content}}';
             } else {
-              _wsLog = '已連接到房間 ${chatService.currentRoom!.name}，暫無訊息';
+              newLog = '已連接到房間 ${chatService.currentRoom!.name}，暫無訊息';
             }
           } else {
-            // 當沒有當前房間時，顯示連接狀態
-            if (chatService.isConnected) {
-              _wsLog = 'WebSocket 已連接，等待加入聊天室...';
-            } else {
-              _wsLog = '尚未連接到 WebSocket 服務器';
-            }
+            newLog = 'WebSocket 已連接，等待加入聊天室...';
           }
-        });
+        } else {
+          newLog = '尚未連接到 WebSocket 服務器';
+        }
+        
+        // 只有當日誌內容變化時才更新 UI
+        if (newLog != _wsLog) {
+          setState(() {
+            _wsLog = newLog;
+          });
+        }
       }
     });
   }
@@ -72,6 +77,32 @@ class _TestTabState extends State<TestTab> {
     ChatServiceSingleton.instance.removeConnectResponseListener(_onConnectResponse);
     _targetUserIdController.dispose();
     super.dispose();
+  }
+
+  // 手動刷新日誌顯示
+  void _refreshLog() {
+    final chatService = ChatServiceSingleton.instance;
+    String newLog = '';
+    
+    if (chatService.isConnected) {
+      if (chatService.currentRoom != null) {
+        final recentMessages = chatService.messages;
+        if (recentMessages.isNotEmpty) {
+          final lastMsg = recentMessages.last;
+          newLog = '最近消息: {type: message, sender: ${lastMsg.sender}, content: ${lastMsg.content}}';
+        } else {
+          newLog = '已連接到房間 ${chatService.currentRoom!.name}，暫無訊息';
+        }
+      } else {
+        newLog = 'WebSocket 已連接，等待加入聊天室...';
+      }
+    } else {
+      newLog = '尚未連接到 WebSocket 服務器';
+    }
+    
+    setState(() {
+      _wsLog = newLog;
+    });
   }
 
   /// 連接後自動發送連接要求並創建聊天室
@@ -496,7 +527,17 @@ class _TestTabState extends State<TestTab> {
                 textAlign: TextAlign.center,
               ),
             ),
-            const Text('伺服器回傳：', style: TextStyle(fontWeight: FontWeight.bold)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('伺服器回傳：', style: TextStyle(fontWeight: FontWeight.bold)),
+                TextButton.icon(
+                  onPressed: _refreshLog,
+                  icon: const Icon(Icons.refresh, size: 16),
+                  label: const Text('刷新', style: TextStyle(fontSize: 12)),
+                ),
+              ],
+            ),
             Container(
               padding: const EdgeInsets.all(8),
               margin: const EdgeInsets.only(bottom: 16),

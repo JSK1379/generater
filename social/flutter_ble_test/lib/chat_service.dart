@@ -32,13 +32,10 @@ class ChatService extends ChangeNotifier {
   final List<void Function(String from, String to)> _connectRequestListeners = [];
 
   List<ChatMessage> get messages {
-    debugPrint('[ChatService] 獲取訊息 - 當前房間: ${_currentRoom?.id}');
     if (_currentRoom == null) {
-      debugPrint('[ChatService] 當前房間為 null，返回空列表');
       return [];
     }
     final roomMessages = _roomMessages[_currentRoom!.id] ?? [];
-    debugPrint('[ChatService] 房間 ${_currentRoom!.id} 有 ${roomMessages.length} 條訊息');
     return List.unmodifiable(roomMessages);
   }
   List<ChatRoom> get chatRooms => List.unmodifiable(_chatRooms);
