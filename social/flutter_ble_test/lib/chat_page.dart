@@ -447,14 +447,18 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   String _formatTime(DateTime dateTime) {
+    // 🌍 轉換為本地時區
+    final localDateTime = dateTime.toLocal();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final messageDate = DateTime(dateTime.year, dateTime.month, dateTime.day);
+    final messageDate = DateTime(localDateTime.year, localDateTime.month, localDateTime.day);
     
     if (messageDate == today) {
-      return '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+      // 今天：只顯示時間
+      return '${localDateTime.hour.toString().padLeft(2, '0')}:${localDateTime.minute.toString().padLeft(2, '0')}';
     } else {
-      return '${dateTime.month}/${dateTime.day} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+      // 其他日期：顯示月/日 時間
+      return '${localDateTime.month}/${localDateTime.day} ${localDateTime.hour.toString().padLeft(2, '0')}:${localDateTime.minute.toString().padLeft(2, '0')}';
     }
   }
 }
