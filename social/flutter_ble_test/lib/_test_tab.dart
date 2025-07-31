@@ -36,15 +36,27 @@ class _TestTabState extends State<TestTab> {
     _loadCurrentUserId();
     _disposed = false;
     
-    // 設置定時器，每秒更新一次日誌顯示
-    _logUpdateTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    // 設置定時器，每3秒更新一次日誌顯示（降低頻率）
+    _logUpdateTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       if (mounted && !_disposed) {
         setState(() {
-          // 更新日誌顯示
-          final recentMessages = ChatServiceSingleton.instance.messages;
-          if (recentMessages.isNotEmpty) {
-            final lastMsg = recentMessages.last;
-            _wsLog = '最近消息: {type: message, sender: ${lastMsg.sender}, content: ${lastMsg.content}}';
+          // 只有在有當前房間時才更新日誌顯示，避免重複的 null 房間日誌
+          final chatService = ChatServiceSingleton.instance;
+          if (chatService.currentRoom != null) {
+            final recentMessages = chatService.messages;
+            if (recentMessages.isNotEmpty) {
+              final lastMsg = recentMessages.last;
+              _wsLog = '最近消息: {type: message, sender: ${lastMsg.sender}, content: ${lastMsg.content}}';
+            } else {
+              _wsLog = '已連接到房間 ${chatService.currentRoom!.name}，暫無訊息';
+            }
+          } else {
+            // 當沒有當前房間時，顯示連接狀態
+            if (chatService.isConnected) {
+              _wsLog = 'WebSocket 已連接，等待加入聊天室...';
+            } else {
+              _wsLog = '尚未連接到 WebSocket 服務器';
+            }
           }
         });
       }
