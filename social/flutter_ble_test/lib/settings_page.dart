@@ -113,6 +113,7 @@ class _SettingsPageState extends State<SettingsPage> {
     }
     _autoCommuteTimer = Timer.periodic(const Duration(minutes: 1), (_) => _autoCheckCommutePeriod());
     _loadUserId();
+    _loadCommuteSettings(); // 🔄 載入通勤時段設定
   }
 
   @override
@@ -188,46 +189,46 @@ class _SettingsPageState extends State<SettingsPage> {
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
-          distanceFilter: 10, // 10 米內的位置變化才更新
+          distanceFilter: 0,
         ),
       );
 
-      // 準備上傳數據
-      final url = Uri.parse('https://near-ride-backend-api.onrender.com/gps/upload');
+      // 準備上傳數據 - 使用新的API格式
+      final url = Uri.parse('${ApiConfig.gpsLocation}?user_id=${_userId ?? ''}');
       final body = jsonEncode({
-        'user_id': _userId ?? '',
-        'date': DateTime.now().toIso8601String().substring(0, 10),
-        'route': [
-          {
-            'lat': position.latitude,
-            'lng': position.longitude,
-            'ts': DateTime.now().toIso8601String(),
-          }
-        ],
-        'type': 'current_location', // 標記為當前位置上傳
+        'lat': position.latitude,
+        'lng': position.longitude,
+        'ts': DateTime.now().toIso8601String(),
       });
 
       final res = await http.post(
         url,
         body: body,
-        headers: {'Content-Type': 'application/json'},
+        headers: ApiConfig.jsonHeaders,
       );
 
       debugPrint('當前GPS位置上傳結果: ${res.statusCode} ${res.body}');
       
       if (mounted) {
         if (res.statusCode == 200) {
+          final responseData = jsonDecode(res.body);
           debugPrint('✅ 當前GPS位置上傳成功');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('當前GPS位置上傳成功\n緯度: ${position.latitude.toStringAsFixed(6)}\n經度: ${position.longitude.toStringAsFixed(6)}'),
+              content: Text(
+                'GPS定位記錄成功!\n'
+                '記錄ID: ${responseData['id']}\n'
+                '緯度: ${position.latitude.toStringAsFixed(6)}\n'
+                '經度: ${position.longitude.toStringAsFixed(6)}\n'
+                '時間: ${DateTime.now().toString().substring(0, 19)}'
+              ),
               duration: const Duration(seconds: 3),
             ),
           );
         } else {
           debugPrint('❌ 當前GPS位置上傳失敗: ${res.statusCode}');
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('當前GPS位置上傳失敗: ${res.statusCode}')),
+            SnackBar(content: Text('GPS定位記錄失敗: ${res.statusCode}')),
           );
         }
       }
@@ -235,7 +236,69 @@ class _SettingsPageState extends State<SettingsPage> {
       debugPrint('❌ 當前GPS位置上傳異常: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('當前GPS位置上傳失敗: $e')),
+          SnackBar(content: Text('GPS定位記錄失敗: $e')),
+        );
+      }
+    }
+  }
+
+  // 獲取今日GPS歷史記錄
+  Future<void> getTodayGPSHistory() async {
+    try {
+      final today = DateTime.now().toIso8601String().substring(0, 10);
+      final url = Uri.parse(ApiConfig.gpsUserLocationsByDate(_userId ?? '', today));
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('正在獲取今日GPS記錄...')),
+        );
+      }
+
+      final res = await http.get(url, headers: ApiConfig.jsonHeaders);
+      
+      debugPrint('今日GPS歷史查詢結果: ${res.statusCode} ${res.body}');
+      
+      if (mounted) {
+        if (res.statusCode == 200) {
+          final responseData = jsonDecode(res.body);
+          final totalLocations = responseData['total_locations'] ?? 0;
+          final locations = responseData['locations'] as List? ?? [];
+          
+          debugPrint('✅ 今日GPS歷史獲取成功');
+          
+          String locationDetails = '';
+          if (locations.isNotEmpty) {
+            final firstLocation = locations.first;
+            final lastLocation = locations.last;
+            locationDetails = '\n最新: (${firstLocation['latitude']}, ${firstLocation['longitude']})'
+                             '\n最早: (${lastLocation['latitude']}, ${lastLocation['longitude']})';
+          }
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '今日GPS記錄 ($today)\n'
+                '記錄總數: $totalLocations$locationDetails'
+              ),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        } else if (res.statusCode == 404) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('今日還沒有GPS記錄')),
+          );
+        } else {
+          debugPrint('❌ 今日GPS歷史獲取失敗: ${res.statusCode}');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('GPS記錄查詢失敗: ${res.statusCode}')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ 今日GPS歷史獲取異常: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('GPS記錄查詢失敗: $e')),
         );
       }
     }
@@ -298,6 +361,112 @@ class _SettingsPageState extends State<SettingsPage> {
     );
     if (picked != null && picked != initialTime) {
       onTimeSelected(picked);
+      // 🔄 時間設定後立即儲存
+      await _saveCommuteSettings();
+    }
+  }
+  
+  // 🔄 儲存通勤時段設定
+  Future<void> _saveCommuteSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // 儲存早上通勤時段
+    if (_commuteStartMorning != null) {
+      await prefs.setString('commute_start_morning', '${_commuteStartMorning!.hour}:${_commuteStartMorning!.minute}');
+    } else {
+      await prefs.remove('commute_start_morning');
+    }
+    
+    if (_commuteEndMorning != null) {
+      await prefs.setString('commute_end_morning', '${_commuteEndMorning!.hour}:${_commuteEndMorning!.minute}');
+    } else {
+      await prefs.remove('commute_end_morning');
+    }
+    
+    // 儲存晚上通勤時段
+    if (_commuteStartEvening != null) {
+      await prefs.setString('commute_start_evening', '${_commuteStartEvening!.hour}:${_commuteStartEvening!.minute}');
+    } else {
+      await prefs.remove('commute_start_evening');
+    }
+    
+    if (_commuteEndEvening != null) {
+      await prefs.setString('commute_end_evening', '${_commuteEndEvening!.hour}:${_commuteEndEvening!.minute}');
+    } else {
+      await prefs.remove('commute_end_evening');
+    }
+    
+    debugPrint('[Settings] 通勤時段設定已儲存');
+    if (mounted) {
+      debugPrint('[Settings] 早上: ${_commuteStartMorning?.format(context)} - ${_commuteEndMorning?.format(context)}');
+      debugPrint('[Settings] 晚上: ${_commuteStartEvening?.format(context)} - ${_commuteEndEvening?.format(context)}');
+    }
+  }
+  
+  // 🔄 載入通勤時段設定
+  Future<void> _loadCommuteSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // 載入早上通勤時段
+    final morningStart = prefs.getString('commute_start_morning');
+    if (morningStart != null) {
+      final parts = morningStart.split(':');
+      if (parts.length == 2) {
+        final hour = int.tryParse(parts[0]);
+        final minute = int.tryParse(parts[1]);
+        if (hour != null && minute != null) {
+          _commuteStartMorning = TimeOfDay(hour: hour, minute: minute);
+        }
+      }
+    }
+    
+    final morningEnd = prefs.getString('commute_end_morning');
+    if (morningEnd != null) {
+      final parts = morningEnd.split(':');
+      if (parts.length == 2) {
+        final hour = int.tryParse(parts[0]);
+        final minute = int.tryParse(parts[1]);
+        if (hour != null && minute != null) {
+          _commuteEndMorning = TimeOfDay(hour: hour, minute: minute);
+        }
+      }
+    }
+    
+    // 載入晚上通勤時段
+    final eveningStart = prefs.getString('commute_start_evening');
+    if (eveningStart != null) {
+      final parts = eveningStart.split(':');
+      if (parts.length == 2) {
+        final hour = int.tryParse(parts[0]);
+        final minute = int.tryParse(parts[1]);
+        if (hour != null && minute != null) {
+          _commuteStartEvening = TimeOfDay(hour: hour, minute: minute);
+        }
+      }
+    }
+    
+    final eveningEnd = prefs.getString('commute_end_evening');
+    if (eveningEnd != null) {
+      final parts = eveningEnd.split(':');
+      if (parts.length == 2) {
+        final hour = int.tryParse(parts[0]);
+        final minute = int.tryParse(parts[1]);
+        if (hour != null && minute != null) {
+          _commuteEndEvening = TimeOfDay(hour: hour, minute: minute);
+        }
+      }
+    }
+    
+    if (mounted) {
+      setState(() {
+        // UI 更新
+      });
+    }
+    
+    debugPrint('[Settings] 通勤時段設定已載入');
+    if (mounted) {
+      debugPrint('[Settings] 早上: ${_commuteStartMorning?.format(context)} - ${_commuteEndMorning?.format(context)}');
+      debugPrint('[Settings] 晚上: ${_commuteStartEvening?.format(context)} - ${_commuteEndEvening?.format(context)}');
     }
   }
 
@@ -522,6 +691,39 @@ class _SettingsPageState extends State<SettingsPage> {
                         child: Text('已自動啟動，將於通勤時段結束自動上傳', style: TextStyle(fontSize: 12, color: Colors.blue)),
                       ),
                     const SizedBox(height: 24),
+                    
+                    // GPS定位功能區塊
+                    const Text('GPS定位功能', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: uploadCurrentLocation,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                            ),
+                            icon: const Icon(Icons.gps_fixed),
+                            label: const Text('記錄當前位置'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: getTodayGPSHistory,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              foregroundColor: Colors.white,
+                            ),
+                            icon: const Icon(Icons.history),
+                            label: const Text('今日記錄'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    
                     // 測試 BLE 連接提示窗
                     if (widget.isAdvertising)
                       ElevatedButton(

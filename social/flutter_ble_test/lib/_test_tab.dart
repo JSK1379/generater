@@ -276,43 +276,39 @@ class _TestTabState extends State<TestTab> {
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
-          distanceFilter: 10, // 10 米內的位置變化才更新
+          distanceFilter: 0,
         ),
       );
 
-      // 準備上傳數據
-      final url = Uri.parse(ApiConfig.gpsUpload);
+      // 準備上傳數據 - 使用新的API格式
+      final url = Uri.parse('${ApiConfig.gpsLocation}?user_id=$_currentUserId');
       final body = jsonEncode({
-        'user_id': _currentUserId,
-        'date': DateTime.now().toIso8601String().substring(0, 10),
-        'route': [
-          {
-            'lat': position.latitude,
-            'lng': position.longitude,
-            'ts': DateTime.now().toIso8601String(),
-          }
-        ],
-        'type': 'current_location', // 標記為當前位置上傳
+        'lat': position.latitude,
+        'lng': position.longitude,
+        'ts': DateTime.now().toIso8601String(),
       });
 
       final res = await http.post(
         url,
         body: body,
-        headers: {'Content-Type': 'application/json'},
+        headers: ApiConfig.jsonHeaders,
       );
 
       debugPrint('當前GPS位置上傳結果: ${res.statusCode} ${res.body}');
       
       if (context.mounted) {
         if (res.statusCode == 200) {
+          final responseData = jsonDecode(res.body);
           debugPrint('✅ 當前GPS位置上傳成功');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                '當前GPS位置上傳成功\n'
-                '用戶: $_currentUserId\n'
+                'GPS定位記錄成功!\n'
+                '用戶ID: $_currentUserId\n'
+                '記錄ID: ${responseData['id']}\n'
                 '緯度: ${position.latitude.toStringAsFixed(6)}\n'
-                '經度: ${position.longitude.toStringAsFixed(6)}'
+                '經度: ${position.longitude.toStringAsFixed(6)}\n'
+                '時間: ${DateTime.now().toString().substring(0, 19)}'
               ),
               duration: const Duration(seconds: 4),
             ),
@@ -320,7 +316,7 @@ class _TestTabState extends State<TestTab> {
         } else {
           debugPrint('❌ 當前GPS位置上傳失敗: ${res.statusCode}');
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('當前GPS位置上傳失敗: ${res.statusCode}')),
+            SnackBar(content: Text('GPS定位記錄失敗: ${res.statusCode}')),
           );
         }
       }
@@ -328,7 +324,71 @@ class _TestTabState extends State<TestTab> {
       debugPrint('❌ 當前GPS位置上傳異常: $e');
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('當前GPS位置上傳失敗: $e')),
+          SnackBar(content: Text('GPS定位記錄失敗: $e')),
+        );
+      }
+    }
+  }
+
+  // 獲取今日GPS歷史記錄
+  Future<void> _getTodayGPSHistory(BuildContext context) async {
+    try {
+      final today = DateTime.now().toIso8601String().substring(0, 10);
+      final url = Uri.parse(ApiConfig.gpsUserLocationsByDate(_currentUserId, today));
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('正在獲取今日GPS記錄...')),
+        );
+      }
+
+      final res = await http.get(url, headers: ApiConfig.jsonHeaders);
+      
+      debugPrint('今日GPS歷史查詢結果: ${res.statusCode} ${res.body}');
+      
+      if (context.mounted) {
+        if (res.statusCode == 200) {
+          final responseData = jsonDecode(res.body);
+          final totalLocations = responseData['total_locations'] ?? 0;
+          final locations = responseData['locations'] as List? ?? [];
+          
+          debugPrint('✅ 今日GPS歷史獲取成功');
+          
+          String locationDetails = '';
+          if (locations.isNotEmpty) {
+            final firstLocation = locations.first;
+            final lastLocation = locations.last;
+            locationDetails = '\n最新記錄: (${firstLocation['latitude']}, ${firstLocation['longitude']})'
+                             '\n最早記錄: (${lastLocation['latitude']}, ${lastLocation['longitude']})';
+          }
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '今日GPS記錄查詢成功!\n'
+                '用戶ID: $_currentUserId\n'
+                '日期: $today\n'
+                '記錄總數: $totalLocations$locationDetails'
+              ),
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        } else if (res.statusCode == 404) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('今日還沒有GPS記錄')),
+          );
+        } else {
+          debugPrint('❌ 今日GPS歷史獲取失敗: ${res.statusCode}');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('GPS記錄查詢失敗: ${res.statusCode}')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ 今日GPS歷史獲取異常: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('GPS記錄查詢失敗: $e')),
         );
       }
     }
@@ -477,6 +537,15 @@ class _TestTabState extends State<TestTab> {
                 foregroundColor: Colors.white,
               ),
               child: const Text('上傳當前GPS'),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: () => _getTodayGPSHistory(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('查看今日GPS記錄'),
             ),
           ],
         ),

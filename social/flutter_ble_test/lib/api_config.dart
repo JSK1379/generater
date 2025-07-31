@@ -17,6 +17,12 @@ class ApiConfig {
   static String userAvatar(String userId) => '$_baseUrl/users/$userId/avatar';
   
   // 🗂️ GPS 相關端點
+  static String get gpsLocation => '$_baseUrl/gps/location';
+  static String gpsUserLocations(String userId) => '$_baseUrl/gps/locations/$userId';
+  static String gpsUserLocationsByDate(String userId, String date) => '$_baseUrl/gps/locations/$userId/date/$date';
+  static String gpsDeleteLocations(String userId) => '$_baseUrl/gps/locations/$userId';
+  
+  // 🗂️ 舊版GPS端點（保持向後兼容）
   static String get gpsUpload => '$_baseUrl/gps/upload';
   static String gpsRoute(String userId, String date) => '$_baseUrl/gps/$userId/$date';
   static String gpsHistory(String userId) => '$_baseUrl/gps/$userId/routes';
