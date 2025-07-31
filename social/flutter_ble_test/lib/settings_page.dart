@@ -134,13 +134,13 @@ class _SettingsPageState extends State<SettingsPage> {
     if (_commuteRoute.isEmpty) return;
     final url = Uri.parse('https://your.api/commute/upload'); // 請替換為實際 API
     final body = jsonEncode({
-      'user': widget.nicknameController.text,
+      'user_id': _userId ?? '',  // 🆔 使用用戶 ID 而非暱稱
       'date': DateTime.now().toIso8601String().substring(0, 10),
       'route': _commuteRoute,
     });
     try {
       final res = await http.post(url, body: body, headers: {'Content-Type': 'application/json'});
-      debugPrint('上傳結果: \\${res.statusCode} \\${res.body}');
+      debugPrint('上傳結果: ${res.statusCode} ${res.body}');
     } catch (e) {
       debugPrint('上傳失敗: $e');
     }

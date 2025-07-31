@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 
 class UserProfileEditPage extends StatefulWidget {
   final String userId;
@@ -28,6 +30,12 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
   List<Map<String, dynamic>> _availableHobbies = [];
   bool _isLoading = false;
   bool _isLoadingProfile = true;
+  
+  // 頭貼相關變數
+  ImageProvider? _avatarImageProvider;
+  File? _selectedAvatarFile;
+  String? _currentAvatarUrl;
+  final ImagePicker _picker = ImagePicker();
 
   // 預設興趣列表
   final List<Map<String, dynamic>> _defaultHobbies = [
@@ -119,6 +127,12 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
           _selectedGender = data['gender'] ?? 'male';
           _ageController.text = data['age']?.toString() ?? '';
           _locationController.text = data['location'] ?? '';
+          
+          // 處理頭貼
+          if (data['avatar_url'] != null && data['avatar_url'].toString().isNotEmpty) {
+            _currentAvatarUrl = data['avatar_url'].toString();
+            _avatarImageProvider = NetworkImage(_currentAvatarUrl!);
+          }
           
           // 處理興趣
           if (data['hobbies'] != null && data['hobbies'] is List) {
@@ -235,6 +249,76 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
     }
   }
 
+  // 選擇頭貼
+  Future<void> _pickAvatar() async {
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+        maxWidth: 512,
+        maxHeight: 512,
+      );
+      
+      if (image != null) {
+        final file = File(image.path);
+        setState(() {
+          _selectedAvatarFile = file;
+          _avatarImageProvider = FileImage(file);
+        });
+        
+        debugPrint('[UserProfileEdit] 選擇了新頭貼: ${file.path}');
+      }
+    } catch (e) {
+      debugPrint('[UserProfileEdit] 選擇頭貼時發生錯誤: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('選擇頭貼失敗: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+  
+  // 上傳頭貼到伺服器
+  Future<String?> _uploadAvatar() async {
+    if (_selectedAvatarFile == null) return _currentAvatarUrl;
+    
+    try {
+      debugPrint('[UserProfileEdit] 開始上傳頭貼...');
+      
+      const baseUrl = 'https://near-ride-backend-api.onrender.com';
+      final uri = Uri.parse('$baseUrl/users/${widget.userId}/avatar');
+      
+      final request = http.MultipartRequest('POST', uri);
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'avatar',
+          _selectedAvatarFile!.path,
+        ),
+      );
+      
+      final response = await request.send().timeout(const Duration(seconds: 30));
+      debugPrint('[UserProfileEdit] 頭貼上傳回應狀態: ${response.statusCode}');
+      
+      if (response.statusCode == 200) {
+        final responseData = await response.stream.bytesToString();
+        final data = jsonDecode(responseData);
+        debugPrint('[UserProfileEdit] 頭貼上傳成功: $data');
+        
+        return data['avatar_url'] as String?;
+      } else {
+        final responseData = await response.stream.bytesToString();
+        debugPrint('[UserProfileEdit] 頭貼上傳失敗: ${response.statusCode} - $responseData');
+        throw Exception('上傳失敗: HTTP ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('[UserProfileEdit] 頭貼上傳錯誤: $e');
+      rethrow;
+    }
+  }
+
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -245,6 +329,25 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
     try {
       debugPrint('[UserProfileEdit] 開始儲存用戶資料，用戶 ID: ${widget.userId}');
       
+      // 如果有選擇新頭貼，先上傳頭貼
+      String? avatarUrl = _currentAvatarUrl;
+      if (_selectedAvatarFile != null) {
+        try {
+          avatarUrl = await _uploadAvatar();
+          debugPrint('[UserProfileEdit] 頭貼上傳完成，URL: $avatarUrl');
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('頭貼上傳失敗: $e'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          // 繼續儲存其他資料，即使頭貼上傳失敗
+        }
+      }
+      
       const baseUrl = 'https://near-ride-backend-api.onrender.com';
       final uri = Uri.parse('$baseUrl/users/${widget.userId}');
       
@@ -253,6 +356,11 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
         'gender': _selectedGender,
         'hobby_ids': _selectedHobbyIds,
       };
+
+      // 添加頭貼 URL（如果有的話）
+      if (avatarUrl != null && avatarUrl.isNotEmpty) {
+        updateData['avatar_url'] = avatarUrl;
+      }
 
       // 只在有值時才加入年齡和地點
       if (_ageController.text.trim().isNotEmpty) {
@@ -284,6 +392,14 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
         // 更新本地暱稱
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('nickname', _nicknameController.text.trim());
+        
+        // 更新頭貼狀態
+        if (avatarUrl != null) {
+          setState(() {
+            _currentAvatarUrl = avatarUrl;
+            _selectedAvatarFile = null; // 清除已選擇的檔案
+          });
+        }
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -437,6 +553,66 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
                 ),
                 const SizedBox(height: 16),
 
+                // 頭貼選擇區域
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const Text(
+                          '頭貼',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 12),
+                        GestureDetector(
+                          onTap: _pickAvatar,
+                          child: Stack(
+                            children: [
+                              CircleAvatar(
+                                radius: 60,
+                                backgroundImage: _avatarImageProvider,
+                                child: _avatarImageProvider == null
+                                    ? const Icon(Icons.person, size: 60, color: Colors.grey)
+                                    : null,
+                              ),
+                              Positioned(
+                                bottom: 0,
+                                right: 0,
+                                child: Container(
+                                  decoration: const BoxDecoration(
+                                    color: Colors.blue,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  padding: const EdgeInsets.all(8),
+                                  child: const Icon(
+                                    Icons.camera_alt,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _selectedAvatarFile != null 
+                              ? '已選擇新頭貼' 
+                              : '點擊更換頭貼',
+                          style: TextStyle(
+                            color: _selectedAvatarFile != null 
+                                ? Colors.green 
+                                : Colors.grey[600],
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
                 // 暱稱
                 TextFormField(
                   controller: _nicknameController,
@@ -562,7 +738,10 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
                     ),
                     child: _isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text('儲存資料', style: TextStyle(fontSize: 16)),
+                        : Text(
+                            _selectedAvatarFile != null ? '儲存資料與頭貼' : '儲存資料',
+                            style: const TextStyle(fontSize: 16),
+                          ),
                   ),
                 ),
               ],
