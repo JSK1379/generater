@@ -3,8 +3,6 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'user_api_service.dart';
-import 'api_config.dart';
 
 class AvatarPage extends StatefulWidget {
   const AvatarPage({
@@ -53,27 +51,10 @@ class _AvatarPageState extends State<AvatarPage> {
     if (_base64Image != null) {
       AvatarPage.currentAvatarImage = MemoryImage(base64Decode(_base64Image!));
       widget.setAvatarThumbnailBytes(base64Decode(_base64Image!));
-      // 新增：上傳 avatar 給 server
+      // 注意：頭像現在在用戶資料編輯頁面統一上傳，不再單獨上傳
       final prefs = await SharedPreferences.getInstance();
-      final userId = prefs.getString('user_id');
-      if (userId != null && userId.isNotEmpty) {
-        final userApi = UserApiService(ApiConfig.baseUrl);
-        debugPrint('開始上傳頭貼');
-        final avatarUrl = await userApi.uploadAvatar(userId, _base64Image!);
-        debugPrint('頭貼上傳結束');
-        
-        if (avatarUrl != null) {
-          debugPrint('獲得頭像 URL: $avatarUrl');
-          // 保存頭像 URL 到 SharedPreferences
-          await prefs.setString('avatar_url', avatarUrl);
-          // 更新當前頭像為網路圖片
-          AvatarPage.currentAvatarImage = NetworkImage(avatarUrl);
-        } else {
-          debugPrint('沒有獲得頭像 URL，使用本地圖片');
-        }
-        
-        userApi.dispose();
-      }
+      // 僅保存本地狀態，實際上傳在用戶資料編輯頁面進行
+      await prefs.setString('temp_avatar_base64', _base64Image!);
     } else if (_imageUrl != null) {
       AvatarPage.currentAvatarImage = NetworkImage(_imageUrl!);
       // 若有需要可考慮下載圖片轉 Uint8List 再 callback

@@ -80,18 +80,14 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
       final healthResponse = await http.get(healthCheck).timeout(ApiConfig.defaultTimeout);
       debugPrint('[UserProfileEdit] 健康檢查回應: ${healthResponse.statusCode} - ${healthResponse.body}');
       
-      // 測試用戶列表端點 (如果存在)
-      final usersListCheck = Uri.parse(ApiConfig.users);
-      debugPrint('[UserProfileEdit] 測試用戶列表端點: $usersListCheck');
-      
-      final usersResponse = await http.get(usersListCheck).timeout(ApiConfig.defaultTimeout);
-      final responseBodyPreview = usersResponse.body.length > 200 
-          ? '${usersResponse.body.substring(0, 200)}...'
-          : usersResponse.body;
-      debugPrint('[UserProfileEdit] 用戶列表回應: ${usersResponse.statusCode} - $responseBodyPreview');
+      if (healthResponse.statusCode == 200) {
+        debugPrint('[UserProfileEdit] ✅ 伺服器連線正常');
+      } else {
+        debugPrint('[UserProfileEdit] ⚠️ 伺服器健康檢查異常: ${healthResponse.statusCode}');
+      }
       
     } catch (e) {
-      debugPrint('[UserProfileEdit] 伺服器連線測試失敗: $e');
+      debugPrint('[UserProfileEdit] ❌ 伺服器連線測試失敗: $e');
     }
   }
 
@@ -288,74 +284,77 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
       
       final uri = Uri.parse(ApiConfig.userProfile(widget.userId));
       
-      // 🔄 使用 multipart/form-data 同時上傳所有資料
-      final request = http.MultipartRequest('PATCH', uri);
-      
-      // 添加基本用戶資料
-      request.fields['nickname'] = _nicknameController.text.trim();
-      request.fields['gender'] = _selectedGender;
-      request.fields['hobby_ids'] = jsonEncode(_selectedHobbyIds);
+      // 🔄 改用 JSON 格式上傳基本資料
+      final profileData = <String, dynamic>{
+        'nickname': _nicknameController.text.trim(),
+        'gender': _selectedGender,
+        'hobby_ids': _selectedHobbyIds,
+      };
       
       // 只在有值時才加入年齡和地點
       if (_ageController.text.trim().isNotEmpty) {
         final age = int.tryParse(_ageController.text.trim());
         if (age != null) {
-          request.fields['age'] = age.toString();
+          profileData['age'] = age;
         }
       }
       if (_locationController.text.trim().isNotEmpty) {
-        request.fields['location'] = _locationController.text.trim();
+        profileData['location'] = _locationController.text.trim();
       }
       
-      // 🖼️ 如果有選擇新頭貼，直接添加到請求中
-      if (_selectedAvatarFile != null) {
-        debugPrint('[UserProfileEdit] 添加頭貼到請求中: ${_selectedAvatarFile!.path}');
-        request.files.add(
-          await http.MultipartFile.fromPath(
-            'avatar',
-            _selectedAvatarFile!.path,
-          ),
-        );
-      }
-      
-      debugPrint('[UserProfileEdit] 準備發送的資料欄位: ${request.fields}');
-      debugPrint('[UserProfileEdit] 準備發送的檔案: ${request.files.map((f) => f.field).toList()}');
+      debugPrint('[UserProfileEdit] 準備發送的JSON資料: $profileData');
       debugPrint('[UserProfileEdit] 請求 URL: $uri');
 
-      final response = await request.send().timeout(ApiConfig.uploadTimeout);
-      final responseBody = await response.stream.bytesToString();
+      // 先更新基本資料
+      final response = await http.patch(
+        uri,
+        headers: ApiConfig.jsonHeaders,
+        body: jsonEncode(profileData),
+      ).timeout(ApiConfig.defaultTimeout);
 
       debugPrint('[UserProfileEdit] HTTP 回應狀態碼: ${response.statusCode}');
-      debugPrint('[UserProfileEdit] HTTP 回應內容: $responseBody');
+      debugPrint('[UserProfileEdit] HTTP 回應內容: ${response.body}');
 
       if (response.statusCode == 200) {
-        final responseData = jsonDecode(responseBody);
+        final responseData = jsonDecode(response.body);
         debugPrint('[UserProfileEdit] 用戶資料更新成功: $responseData');
         
         // 更新本地暱稱
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('nickname', _nicknameController.text.trim());
         
-        // 🖼️ 更新頭貼狀態 - 從回應中獲取新的頭貼URL
-        if (responseData['avatar_url'] != null) {
-          setState(() {
-            _currentAvatarUrl = responseData['avatar_url'];
-            _selectedAvatarFile = null; // 清除已選擇的檔案
-            _avatarImageProvider = NetworkImage(_currentAvatarUrl!);
-          });
-        } else if (_selectedAvatarFile != null) {
-          // 如果沒有回傳頭貼URL但有上傳檔案，清除選擇狀態
-          setState(() {
-            _selectedAvatarFile = null;
-          });
+        // 🖼️ 如果有選擇新頭貼，直接用 base64 格式上傳
+        String? avatarUploadResult;
+        if (_selectedAvatarFile != null) {
+          debugPrint('[UserProfileEdit] 開始上傳頭貼（使用 base64 格式）...');
+          avatarUploadResult = await _uploadAvatarAsBase64();
         }
         
         if (mounted) {
-          final hasAvatar = _selectedAvatarFile != null || responseData['avatar_url'] != null;
+          final hasAvatarUpload = _selectedAvatarFile != null;
+          final avatarSuccess = avatarUploadResult != null;
+          
+          String message;
+          if (hasAvatarUpload && avatarSuccess) {
+            if (avatarUploadResult == 'success_no_url') {
+              message = '用戶資料和頭貼更新成功（頭貼處理中，請稍後刷新頁面查看）';
+            } else {
+              message = '用戶資料和頭貼更新成功';
+            }
+          } else if (hasAvatarUpload && !avatarSuccess) {
+            message = '用戶資料更新成功，但頭貼上傳失敗';
+          } else {
+            message = '用戶資料更新成功';
+          }
+          
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(hasAvatar ? '用戶資料和頭貼更新成功' : '用戶資料更新成功'),
-              backgroundColor: Colors.green,
+              content: Text(message),
+              backgroundColor: (hasAvatarUpload && !avatarSuccess) ? Colors.red : 
+                              (avatarUploadResult == 'success_no_url') ? Colors.orange : Colors.green,
+              duration: avatarUploadResult == 'success_no_url' 
+                  ? const Duration(seconds: 4) 
+                  : const Duration(seconds: 2),
             ),
           );
           Navigator.of(context).pop(true); // 返回 true 表示有更新
@@ -365,7 +364,7 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
         String errorMessage = 'HTTP ${response.statusCode}';
         
         try {
-          final errorData = jsonDecode(responseBody);
+          final errorData = jsonDecode(response.body);
           if (errorData['message'] != null) {
             errorMessage += ' - ${errorData['message']}';
           } else if (errorData['error'] != null) {
@@ -375,7 +374,7 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
           }
         } catch (e) {
           // 如果無法解析 JSON，顯示原始回應
-          errorMessage += ' - $responseBody';
+          errorMessage += ' - ${response.body}';
         }
 
         debugPrint('[UserProfileEdit] 更新失敗: $errorMessage');
@@ -387,6 +386,8 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
             userMessage = '找不到用戶資料，請確認用戶 ID 是否正確';
           } else if (response.statusCode == 400) {
             userMessage = '資料格式錯誤，請檢查輸入的資料';
+          } else if (response.statusCode == 422) {
+            userMessage = '資料驗證失敗，請檢查必填欄位和資料格式';
           } else if (response.statusCode == 500) {
             userMessage = '伺服器內部錯誤，請稍後再試。如果問題持續存在，請聯繫技術支援';
           } else {
@@ -407,7 +408,7 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
                     builder: (context) => AlertDialog(
                       title: const Text('錯誤詳情'),
                       content: SingleChildScrollView(
-                        child: Text('狀態碼: ${response.statusCode}\n\n回應內容:\n$responseBody'),
+                        child: Text('狀態碼: ${response.statusCode}\n\n回應內容:\n${response.body}'),
                       ),
                       actions: [
                         TextButton(
@@ -440,6 +441,67 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
           _isLoading = false;
         });
       }
+    }
+  }
+  
+  // 🖼️ 使用 base64 格式上傳頭像
+  Future<String?> _uploadAvatarAsBase64() async {
+    if (_selectedAvatarFile == null) return null;
+    
+    try {
+      // 讀取檔案並轉換為 base64
+      final bytes = await _selectedAvatarFile!.readAsBytes();
+      final base64Image = base64Encode(bytes);
+      
+      final uri = Uri.parse(ApiConfig.userProfile(widget.userId));
+      
+      final avatarData = {
+        'avatar_base64': base64Image,
+      };
+      
+      debugPrint('[UserProfileEdit] 使用 base64 上傳頭像到: $uri');
+      debugPrint('[UserProfileEdit] base64 資料長度: ${base64Image.length} 字符');
+      
+      final response = await http.patch(
+        uri,
+        headers: ApiConfig.jsonHeaders,
+        body: jsonEncode(avatarData),
+      ).timeout(ApiConfig.uploadTimeout);
+      
+      debugPrint('[UserProfileEdit] base64 頭像上傳回應狀態: ${response.statusCode}');
+      debugPrint('[UserProfileEdit] base64 頭像上傳回應內容: ${response.body}');
+      
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        final avatarUrl = responseData['avatar_url'] as String?;
+        
+        if (avatarUrl != null && avatarUrl.isNotEmpty) {
+          setState(() {
+            _currentAvatarUrl = avatarUrl;
+            _selectedAvatarFile = null;
+            _avatarImageProvider = NetworkImage(avatarUrl);
+          });
+          
+          debugPrint('[UserProfileEdit] base64 頭像上傳成功，URL: $avatarUrl');
+          return avatarUrl;
+        } else {
+          // 即使沒有返回 URL，也清除選擇的檔案，因為伺服器已經接收了資料
+          setState(() {
+            _selectedAvatarFile = null;
+            // 保持使用本地圖片預覽，直到重新載入用戶資料
+          });
+          
+          debugPrint('[UserProfileEdit] base64 頭像上傳成功，但未返回 URL。伺服器可能需要時間處理。');
+          debugPrint('[UserProfileEdit] 伺服器回應: ${response.body}');
+          return 'success_no_url';
+        }
+      } else {
+        debugPrint('[UserProfileEdit] base64 頭像上傳失敗: ${response.statusCode} - ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('[UserProfileEdit] base64 頭像上傳錯誤: $e');
+      return null;
     }
   }
 
