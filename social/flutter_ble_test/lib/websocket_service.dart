@@ -119,7 +119,7 @@ class WebSocketService {
       debugPrint('[WebSocket] 連線成功: $url');
       
       // 啟動心跳機制（每30秒發送一次心跳）
-      _startHeartbeat();
+      // _startHeartbeat(); // 暫時停用心跳功能
       
       return true;
     } catch (e) {
