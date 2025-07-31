@@ -132,7 +132,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> uploadCommuteRoute() async {
     if (_commuteRoute.isEmpty) return;
-    final url = Uri.parse('https://your.api/commute/upload'); // 請替換為實際 API
+    final url = Uri.parse('https://near-ride-backend-api.onrender.com/gps/upload'); // 🚀 更新為實際的GPS API端點
     final body = jsonEncode({
       'user_id': _userId ?? '',  // 🆔 使用用戶 ID 而非暱稱
       'date': DateTime.now().toIso8601String().substring(0, 10),
@@ -140,9 +140,29 @@ class _SettingsPageState extends State<SettingsPage> {
     });
     try {
       final res = await http.post(url, body: body, headers: {'Content-Type': 'application/json'});
-      debugPrint('上傳結果: ${res.statusCode} ${res.body}');
+      debugPrint('GPS路線上傳結果: ${res.statusCode} ${res.body}');
+      if (res.statusCode == 200) {
+        debugPrint('✅ GPS路線上傳成功');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('通勤路線上傳成功')),
+          );
+        }
+      } else {
+        debugPrint('❌ GPS路線上傳失敗: ${res.statusCode}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('通勤路線上傳失敗: ${res.statusCode}')),
+          );
+        }
+      }
     } catch (e) {
-      debugPrint('上傳失敗: $e');
+      debugPrint('❌ GPS路線上傳異常: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('通勤路線上傳失敗: $e')),
+        );
+      }
     }
   }
 

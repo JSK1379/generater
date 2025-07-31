@@ -113,7 +113,7 @@ class _AvatarPageState extends State<AvatarPage> {
     final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=$apiKey');
     // 將「人」加入描述詞但不顯示在輸入框
     final prompt = _selectedBody == '全身'
-        ? '${_descController.text.trim()} 生成一個包含人的全身像，從頭髮到膝蓋，'
+        ? '${_descController.text.trim()} 生成一個包含人的全身像，從頭髮到膝蓋，一定要符合條件，'
             '${_selectedGender.isNotEmpty ? '性別：$_selectedGender，' : ''}'
             '${_selectedHair.isNotEmpty ? '髮型：$_selectedHair，' : ''}'
             '${_selectedStyle.isNotEmpty ? '畫風：$_selectedStyle，' : ''}'
