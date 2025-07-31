@@ -1,5 +1,9 @@
 /// 🌐 統一的API配置檔案
 /// 集中管理所有API端點，方便維護和更新
+library api_config;
+
+import 'package:flutter/foundation.dart';
+
 class ApiConfig {
   // 🏠 基礎URL配置
   static const String _baseUrl = 'https://near-ride-backend-api.onrender.com';
@@ -42,8 +46,8 @@ class ApiConfig {
   
   // 🔧 調試用功能
   static void printEndpoint(String name, String url) {
-    if (const bool.fromEnvironment('dart.vm.product') == false) {
-      print('[ApiConfig] $name: $url');
+    if (kDebugMode) {
+      debugPrint('[ApiConfig] $name: $url');
     }
   }
 }

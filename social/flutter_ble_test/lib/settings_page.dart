@@ -186,7 +186,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
       // 獲取當前位置
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 10, // 10 米內的位置變化才更新
+        ),
       );
 
       // 準備上傳數據
