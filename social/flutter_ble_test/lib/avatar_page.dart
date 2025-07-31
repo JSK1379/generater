@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'user_api_service.dart';
+import 'api_config.dart';
 
 class AvatarPage extends StatefulWidget {
   const AvatarPage({
@@ -56,8 +57,7 @@ class _AvatarPageState extends State<AvatarPage> {
       final prefs = await SharedPreferences.getInstance();
       final userId = prefs.getString('user_id');
       if (userId != null && userId.isNotEmpty) {
-        const baseUrl = 'https://near-ride-backend-api.onrender.com/';
-        final userApi = UserApiService(baseUrl);
+        final userApi = UserApiService(ApiConfig.baseUrl);
         debugPrint('開始上傳頭貼');
         final avatarUrl = await userApi.uploadAvatar(userId, _base64Image!);
         debugPrint('頭貼上傳結束');

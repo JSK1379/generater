@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'api_config.dart';
 
 class UserProfileEditPage extends StatefulWidget {
   final String userId;
@@ -72,20 +73,18 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
     try {
       debugPrint('[UserProfileEdit] 測試伺服器連線...');
       
-      const baseUrl = 'https://near-ride-backend-api.onrender.com';
-      
       // 測試基本連線
-      final healthCheck = Uri.parse('$baseUrl/health');
+      final healthCheck = Uri.parse(ApiConfig.health);
       debugPrint('[UserProfileEdit] 測試健康檢查端點: $healthCheck');
       
-      final healthResponse = await http.get(healthCheck).timeout(const Duration(seconds: 10));
+      final healthResponse = await http.get(healthCheck).timeout(ApiConfig.defaultTimeout);
       debugPrint('[UserProfileEdit] 健康檢查回應: ${healthResponse.statusCode} - ${healthResponse.body}');
       
       // 測試用戶列表端點 (如果存在)
-      final usersListCheck = Uri.parse('$baseUrl/users');
+      final usersListCheck = Uri.parse(ApiConfig.users);
       debugPrint('[UserProfileEdit] 測試用戶列表端點: $usersListCheck');
       
-      final usersResponse = await http.get(usersListCheck).timeout(const Duration(seconds: 10));
+      final usersResponse = await http.get(usersListCheck).timeout(ApiConfig.defaultTimeout);
       final responseBodyPreview = usersResponse.body.length > 200 
           ? '${usersResponse.body.substring(0, 200)}...'
           : usersResponse.body;
@@ -100,19 +99,15 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
     try {
       debugPrint('[UserProfileEdit] 開始載入用戶資料，用戶 ID: ${widget.userId}');
       
-      const baseUrl = 'https://near-ride-backend-api.onrender.com';
-      final uri = Uri.parse('$baseUrl/users/${widget.userId}');
+      final uri = Uri.parse(ApiConfig.userProfile(widget.userId));
       
       debugPrint('[UserProfileEdit] 請求 URL: $uri');
-      debugPrint('[UserProfileEdit] 請求標頭: {Content-Type: application/json}');
+      debugPrint('[UserProfileEdit] 請求標頭: ${ApiConfig.jsonHeaders}');
       
       final response = await http.get(
         uri,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-      ).timeout(const Duration(seconds: 15));
+        headers: ApiConfig.jsonHeaders,
+      ).timeout(ApiConfig.defaultTimeout);
       
       debugPrint('[UserProfileEdit] HTTP 回應狀態碼: ${response.statusCode}');
       debugPrint('[UserProfileEdit] HTTP 回應標頭: ${response.headers}');
@@ -281,44 +276,6 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
     }
   }
   
-  // 上傳頭貼到伺服器
-  Future<String?> _uploadAvatar() async {
-    if (_selectedAvatarFile == null) return _currentAvatarUrl;
-    
-    try {
-      debugPrint('[UserProfileEdit] 開始上傳頭貼...');
-      
-      const baseUrl = 'https://near-ride-backend-api.onrender.com';
-      final uri = Uri.parse('$baseUrl/users/${widget.userId}/avatar');
-      
-      final request = http.MultipartRequest('POST', uri);
-      request.files.add(
-        await http.MultipartFile.fromPath(
-          'avatar',
-          _selectedAvatarFile!.path,
-        ),
-      );
-      
-      final response = await request.send().timeout(const Duration(seconds: 30));
-      debugPrint('[UserProfileEdit] 頭貼上傳回應狀態: ${response.statusCode}');
-      
-      if (response.statusCode == 200) {
-        final responseData = await response.stream.bytesToString();
-        final data = jsonDecode(responseData);
-        debugPrint('[UserProfileEdit] 頭貼上傳成功: $data');
-        
-        return data['avatar_url'] as String?;
-      } else {
-        final responseData = await response.stream.bytesToString();
-        debugPrint('[UserProfileEdit] 頭貼上傳失敗: ${response.statusCode} - $responseData');
-        throw Exception('上傳失敗: HTTP ${response.statusCode}');
-      }
-    } catch (e) {
-      debugPrint('[UserProfileEdit] 頭貼上傳錯誤: $e');
-      rethrow;
-    }
-  }
-
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -329,82 +286,75 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
     try {
       debugPrint('[UserProfileEdit] 開始儲存用戶資料，用戶 ID: ${widget.userId}');
       
-      // 如果有選擇新頭貼，先上傳頭貼
-      String? avatarUrl = _currentAvatarUrl;
-      if (_selectedAvatarFile != null) {
-        try {
-          avatarUrl = await _uploadAvatar();
-          debugPrint('[UserProfileEdit] 頭貼上傳完成，URL: $avatarUrl');
-        } catch (e) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('頭貼上傳失敗: $e'),
-                backgroundColor: Colors.orange,
-              ),
-            );
-          }
-          // 繼續儲存其他資料，即使頭貼上傳失敗
-        }
-      }
+      final uri = Uri.parse(ApiConfig.userProfile(widget.userId));
       
-      const baseUrl = 'https://near-ride-backend-api.onrender.com';
-      final uri = Uri.parse('$baseUrl/users/${widget.userId}');
+      // 🔄 使用 multipart/form-data 同時上傳所有資料
+      final request = http.MultipartRequest('PATCH', uri);
       
-      final updateData = {
-        'nickname': _nicknameController.text.trim(),
-        'gender': _selectedGender,
-        'hobby_ids': _selectedHobbyIds,
-      };
-
-      // 添加頭貼 URL（如果有的話）
-      if (avatarUrl != null && avatarUrl.isNotEmpty) {
-        updateData['avatar_url'] = avatarUrl;
-      }
-
+      // 添加基本用戶資料
+      request.fields['nickname'] = _nicknameController.text.trim();
+      request.fields['gender'] = _selectedGender;
+      request.fields['hobby_ids'] = jsonEncode(_selectedHobbyIds);
+      
       // 只在有值時才加入年齡和地點
       if (_ageController.text.trim().isNotEmpty) {
         final age = int.tryParse(_ageController.text.trim());
         if (age != null) {
-          updateData['age'] = age;
+          request.fields['age'] = age.toString();
         }
       }
       if (_locationController.text.trim().isNotEmpty) {
-        updateData['location'] = _locationController.text.trim();
+        request.fields['location'] = _locationController.text.trim();
       }
-
-      debugPrint('[UserProfileEdit] 準備發送的資料: $updateData');
+      
+      // 🖼️ 如果有選擇新頭貼，直接添加到請求中
+      if (_selectedAvatarFile != null) {
+        debugPrint('[UserProfileEdit] 添加頭貼到請求中: ${_selectedAvatarFile!.path}');
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'avatar',
+            _selectedAvatarFile!.path,
+          ),
+        );
+      }
+      
+      debugPrint('[UserProfileEdit] 準備發送的資料欄位: ${request.fields}');
+      debugPrint('[UserProfileEdit] 準備發送的檔案: ${request.files.map((f) => f.field).toList()}');
       debugPrint('[UserProfileEdit] 請求 URL: $uri');
 
-      final response = await http.patch(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(updateData),
-      ).timeout(const Duration(seconds: 15));
+      final response = await request.send().timeout(ApiConfig.uploadTimeout);
+      final responseBody = await response.stream.bytesToString();
 
       debugPrint('[UserProfileEdit] HTTP 回應狀態碼: ${response.statusCode}');
-      debugPrint('[UserProfileEdit] HTTP 回應內容: ${response.body}');
+      debugPrint('[UserProfileEdit] HTTP 回應內容: $responseBody');
 
       if (response.statusCode == 200) {
-        final responseData = jsonDecode(response.body);
+        final responseData = jsonDecode(responseBody);
         debugPrint('[UserProfileEdit] 用戶資料更新成功: $responseData');
         
         // 更新本地暱稱
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('nickname', _nicknameController.text.trim());
         
-        // 更新頭貼狀態
-        if (avatarUrl != null) {
+        // 🖼️ 更新頭貼狀態 - 從回應中獲取新的頭貼URL
+        if (responseData['avatar_url'] != null) {
           setState(() {
-            _currentAvatarUrl = avatarUrl;
+            _currentAvatarUrl = responseData['avatar_url'];
             _selectedAvatarFile = null; // 清除已選擇的檔案
+            _avatarImageProvider = NetworkImage(_currentAvatarUrl!);
+          });
+        } else if (_selectedAvatarFile != null) {
+          // 如果沒有回傳頭貼URL但有上傳檔案，清除選擇狀態
+          setState(() {
+            _selectedAvatarFile = null;
           });
         }
         
         if (mounted) {
+          final hasAvatar = _selectedAvatarFile != null || responseData['avatar_url'] != null;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('用戶資料更新成功'),
+            SnackBar(
+              content: Text(hasAvatar ? '用戶資料和頭貼更新成功' : '用戶資料更新成功'),
               backgroundColor: Colors.green,
             ),
           );
@@ -415,7 +365,7 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
         String errorMessage = 'HTTP ${response.statusCode}';
         
         try {
-          final errorData = jsonDecode(response.body);
+          final errorData = jsonDecode(responseBody);
           if (errorData['message'] != null) {
             errorMessage += ' - ${errorData['message']}';
           } else if (errorData['error'] != null) {
@@ -425,7 +375,7 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
           }
         } catch (e) {
           // 如果無法解析 JSON，顯示原始回應
-          errorMessage += ' - ${response.body}';
+          errorMessage += ' - $responseBody';
         }
 
         debugPrint('[UserProfileEdit] 更新失敗: $errorMessage');
@@ -457,7 +407,7 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
                     builder: (context) => AlertDialog(
                       title: const Text('錯誤詳情'),
                       content: SingleChildScrollView(
-                        child: Text('狀態碼: ${response.statusCode}\n\n回應內容:\n${response.body}'),
+                        child: Text('狀態碼: ${response.statusCode}\n\n回應內容:\n$responseBody'),
                       ),
                       actions: [
                         TextButton(
@@ -738,9 +688,9 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
                     ),
                     child: _isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
-                        : Text(
-                            _selectedAvatarFile != null ? '儲存資料與頭貼' : '儲存資料',
-                            style: const TextStyle(fontSize: 16),
+                        : const Text(
+                            '儲存所有資料',
+                            style: TextStyle(fontSize: 16),
                           ),
                   ),
                 ),

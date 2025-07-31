@@ -40,6 +40,18 @@ class WebSocketService {
   // 連接 WebSocket
   Future<bool> connect(String url) async {
     try {
+      // 🔄 檢查是否已經連接到相同的 URL
+      if (_isConnected && _currentUrl == url && _socket != null) {
+        debugPrint('[WebSocket] 已連接到相同URL，跳過重複連接: $url');
+        return true;
+      }
+      
+      // 如果連接到不同URL，先斷開現有連接
+      if (_isConnected && _currentUrl != url) {
+        debugPrint('[WebSocket] 切換到新URL，先斷開現有連接');
+        disconnect();
+      }
+      
       debugPrint('[WebSocket] 開始連接: $url');
       _currentUrl = url;
       
@@ -78,19 +90,20 @@ class WebSocketService {
             
             if (type == 'joined_room' && roomId != null) {
               final messageId = '$type:$roomId';
-              // 檢查最近是否處理過相同的消息（5秒內）
+              // 🔄 檢查最近是否處理過相同的消息（10秒內，增加時間窗口）
               final now = DateTime.now();
               final lastProcessed = _processedMessages[messageId];
               
-              if (lastProcessed != null && now.difference(lastProcessed).inSeconds < 5) {
-                debugPrint('[WebSocket] 跳過重複的 joined_room 消息: $roomId');
+              if (lastProcessed != null && now.difference(lastProcessed).inSeconds < 10) {
+                debugPrint('[WebSocket] ⚠️ 跳過重複的 joined_room 消息: $roomId (${now.difference(lastProcessed).inSeconds}秒前已處理)');
                 return;
               }
               
               // 記錄此消息已被處理
               _processedMessages[messageId] = now;
+              debugPrint('[WebSocket] ✅ 處理 joined_room 消息: $roomId');
               
-              // 每分鐘清理一次過期的消息記錄
+              // 定期清理過期的消息記錄（每100條或每分鐘整點）
               if (_processedMessages.length > 100 || 
                   (_processedMessages.isNotEmpty && now.second == 0)) {
                 cleanupProcessedMessages();
@@ -160,24 +173,6 @@ class WebSocketService {
     } else {
       debugPrint('[WebSocket] 已達到最大重連次數或沒有 URL，停止重連');
     }
-  }
-
-  // 啟動心跳機制
-  void _startHeartbeat() {
-    _stopHeartbeat(); // 先停止之前的心跳
-    _heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
-      if (_isConnected && _socket != null) {
-        try {
-          debugPrint('[WebSocket] 發送心跳');
-          _socket!.add(jsonEncode({'type': 'ping'}));
-        } catch (e) {
-          debugPrint('[WebSocket] 心跳發送失敗: $e');
-          _handleDisconnection();
-        }
-      } else {
-        _stopHeartbeat();
-      }
-    });
   }
 
   // 停止心跳機制

@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'chat_service_singleton.dart';
 import 'user_api_service.dart';
 import 'dart:async';
+import 'api_config.dart';
 
-const String kTestWsServerUrl = 'wss://near-ride-backend-api.onrender.com/ws';
+// 使用統一的API配置
+final String kTestWsServerUrl = ApiConfig.wsUrl;
 const String kTestTargetUserId = '0000';
 
 
@@ -113,11 +118,17 @@ class _TestTabState extends State<TestTab> {
       }
       return;
     }
+    
+    // 🔄 優化連線邏輯：只在需要時連線，避免重複
     if (!chatService.isConnected) {
+      debugPrint('[TestTab] WebSocket未連線，開始連線...');
       await chatService.connectAndRegister(kTestWsServerUrl, 'test_room', myUserId);
     } else {
+      debugPrint('[TestTab] WebSocket已連線，確保用戶註冊...');
       chatService.ensureUserRegistered(myUserId);
     }
+    
+    debugPrint('[TestTab] 發送連接要求: $myUserId -> $targetUserId');
     chatService.sendConnectRequest(myUserId, targetUserId);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -131,12 +142,18 @@ class _TestTabState extends State<TestTab> {
     final prefs = await SharedPreferences.getInstance();
     final myUserId = prefs.getString('user_id') ?? 'unknown_user';
     final chatService = ChatServiceSingleton.instance;
+    
+    // 🔄 優化連線邏輯，避免重複連線
     if (!chatService.isConnected) {
+      debugPrint('[TestTab] WebSocket未連線，開始連線建立房間...');
       await chatService.connectAndRegister(kTestWsServerUrl, 'test_room', myUserId);
     } else {
+      debugPrint('[TestTab] WebSocket已連線，確保用戶註冊後建立房間...');
       // 確保用戶已註冊
       chatService.ensureUserRegistered(myUserId);
     }
+    
+    debugPrint('[TestTab] 開始建立房間: $roomName');
     final roomId = await chatService.createRoom(roomName);
     debugPrint('[TestTab] createRoom 回傳的 roomId: $roomId');
     String joinMsg = '';
@@ -179,8 +196,7 @@ class _TestTabState extends State<TestTab> {
 
     try {
       // 通過 HTTP 註冊並獲取新的用戶 ID
-      const baseUrl = 'https://near-ride-backend-api.onrender.com/';
-      final userApiService = UserApiService(baseUrl);
+      final userApiService = UserApiService(ApiConfig.baseUrl);
       final newUserId = await userApiService.registerUserWithEmail(email, password);
       
       if (newUserId == null) {
@@ -230,6 +246,88 @@ class _TestTabState extends State<TestTab> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('註冊出錯，請檢查網路連線')),
       );
+    }
+  }
+
+  // 上傳當前GPS位置
+  Future<void> _uploadCurrentGPS(BuildContext context) async {
+    try {
+      // 檢查定位權限
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('請授權定位權限才能上傳GPS位置')),
+            );
+          }
+          return;
+        }
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('正在獲取GPS位置...')),
+        );
+      }
+
+      // 獲取當前位置
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      // 準備上傳數據
+      final url = Uri.parse(ApiConfig.gpsUpload);
+      final body = jsonEncode({
+        'user_id': _currentUserId,
+        'date': DateTime.now().toIso8601String().substring(0, 10),
+        'route': [
+          {
+            'lat': position.latitude,
+            'lng': position.longitude,
+            'ts': DateTime.now().toIso8601String(),
+          }
+        ],
+        'type': 'current_location', // 標記為當前位置上傳
+      });
+
+      final res = await http.post(
+        url,
+        body: body,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      debugPrint('當前GPS位置上傳結果: ${res.statusCode} ${res.body}');
+      
+      if (context.mounted) {
+        if (res.statusCode == 200) {
+          debugPrint('✅ 當前GPS位置上傳成功');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '當前GPS位置上傳成功\n'
+                '用戶: $_currentUserId\n'
+                '緯度: ${position.latitude.toStringAsFixed(6)}\n'
+                '經度: ${position.longitude.toStringAsFixed(6)}'
+              ),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        } else {
+          debugPrint('❌ 當前GPS位置上傳失敗: ${res.statusCode}');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('當前GPS位置上傳失敗: ${res.statusCode}')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ 當前GPS位置上傳異常: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('當前GPS位置上傳失敗: $e')),
+        );
+      }
     }
   }
 
@@ -367,6 +465,15 @@ class _TestTabState extends State<TestTab> {
                 foregroundColor: Colors.white,
               ),
               child: const Text('註冊新用戶'),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () => _uploadCurrentGPS(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('上傳當前GPS'),
             ),
           ],
         ),

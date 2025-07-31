@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'main_tab_page.dart';
 import 'settings_ble_helper.dart';
 import 'user_profile_edit_page.dart';
+import 'api_config.dart';
 
 class SettingsPage extends StatefulWidget {
   final bool isAdvertising;
@@ -132,14 +133,14 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> uploadCommuteRoute() async {
     if (_commuteRoute.isEmpty) return;
-    final url = Uri.parse('https://near-ride-backend-api.onrender.com/gps/upload'); // 🚀 更新為實際的GPS API端點
+    final url = Uri.parse(ApiConfig.gpsUpload); // 🚀 使用統一的API配置
     final body = jsonEncode({
       'user_id': _userId ?? '',  // 🆔 使用用戶 ID 而非暱稱
       'date': DateTime.now().toIso8601String().substring(0, 10),
       'route': _commuteRoute,
     });
     try {
-      final res = await http.post(url, body: body, headers: {'Content-Type': 'application/json'});
+      final res = await http.post(url, body: body, headers: ApiConfig.jsonHeaders);
       debugPrint('GPS路線上傳結果: ${res.statusCode} ${res.body}');
       if (res.statusCode == 200) {
         debugPrint('✅ GPS路線上傳成功');
@@ -161,6 +162,77 @@ class _SettingsPageState extends State<SettingsPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('通勤路線上傳失敗: $e')),
+        );
+      }
+    }
+  }
+
+  // 上傳當前GPS位置
+  Future<void> uploadCurrentLocation() async {
+    try {
+      // 檢查定位權限
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('請授權定位權限才能上傳GPS位置')),
+            );
+          }
+          return;
+        }
+      }
+
+      // 獲取當前位置
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      // 準備上傳數據
+      final url = Uri.parse('https://near-ride-backend-api.onrender.com/gps/upload');
+      final body = jsonEncode({
+        'user_id': _userId ?? '',
+        'date': DateTime.now().toIso8601String().substring(0, 10),
+        'route': [
+          {
+            'lat': position.latitude,
+            'lng': position.longitude,
+            'ts': DateTime.now().toIso8601String(),
+          }
+        ],
+        'type': 'current_location', // 標記為當前位置上傳
+      });
+
+      final res = await http.post(
+        url,
+        body: body,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      debugPrint('當前GPS位置上傳結果: ${res.statusCode} ${res.body}');
+      
+      if (mounted) {
+        if (res.statusCode == 200) {
+          debugPrint('✅ 當前GPS位置上傳成功');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('當前GPS位置上傳成功\n緯度: ${position.latitude.toStringAsFixed(6)}\n經度: ${position.longitude.toStringAsFixed(6)}'),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        } else {
+          debugPrint('❌ 當前GPS位置上傳失敗: ${res.statusCode}');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('當前GPS位置上傳失敗: ${res.statusCode}')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ 當前GPS位置上傳異常: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('當前GPS位置上傳失敗: $e')),
         );
       }
     }

@@ -3,6 +3,7 @@ import 'main_tab_page.dart';
 import 'user_id_setup_page_new.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'chat_service_singleton.dart';
+import 'api_config.dart';
 
 void main() {
   runApp(const MyApp());
@@ -97,7 +98,7 @@ class _AppInitializerState extends State<AppInitializer> {
 
     try {
       final chatService = ChatServiceSingleton.instance;
-      const wsUrl = 'wss://near-ride-backend-api.onrender.com/ws';
+      final wsUrl = ApiConfig.wsUrl;
       await chatService.connect(wsUrl, '', userId);
       connectionCompleted = true;
       chatService.webSocketService.sendMessage({

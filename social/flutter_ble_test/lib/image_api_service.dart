@@ -2,12 +2,13 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'api_config.dart';
 
 
 class ImageApiService {
   // 圖片上傳到 server，回傳圖片ID
   Future<String> uploadImage(File imageFile) async {
-    final uri = Uri.parse('https://near-ride-backend-api.onrender.com/');
+    final uri = Uri.parse('${ApiConfig.baseUrl}/');
     final request = http.MultipartRequest('POST', uri)
       ..files.add(await http.MultipartFile.fromPath('file', imageFile.path));
     final response = await request.send();

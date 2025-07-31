@@ -5,11 +5,12 @@ import 'chat_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'user_api_service.dart';
+import 'api_config.dart';
 
 class ChatService extends ChangeNotifier {
   final WebSocketService _webSocketService = WebSocketService();
-  // 創建 UserApiService 實例，使用相同的 baseUrl
-  final UserApiService _userApiService = UserApiService('https://near-ride-backend-api.onrender.com');
+  // 創建 UserApiService 實例，使用統一的API配置
+  final UserApiService _userApiService = UserApiService(ApiConfig.baseUrl);
   WebSocketService get webSocketService => _webSocketService;
   // 按房間 ID 分離的訊息存儲
   final Map<String, List<ChatMessage>> _roomMessages = <String, List<ChatMessage>>{};
@@ -189,10 +190,13 @@ class ChatService extends ChangeNotifier {
             debugPrint('[ChatService] 收到 joined_room，但沒有等待的 completer: $roomId');
           }
           
-          debugPrint('[ChatService] 成功加入房間: $roomId');
+          debugPrint('[ChatService] ✅ 成功加入房間: $roomId');
           
           // 添加到已加入房間集合
           _joinedRooms.add(roomId);
+          
+          // 🔄 確保房間存在且設置為當前房間
+          _ensureRoomExists(roomId);
           
           // 創建房間對象並添加到列表中
           if (!_chatRooms.any((r) => r.id == roomId)) {
@@ -532,6 +536,14 @@ class ChatService extends ChangeNotifier {
       );
       _chatRooms.add(newRoom);
       debugPrint('[ChatService] 創建新房間對象: $roomId');
+    }
+    
+    // 🔄 設置為當前房間（如果當前沒有房間或需要切換）
+    final room = _chatRooms.firstWhere((r) => r.id == roomId);
+    if (_currentRoom == null || _currentRoom!.id != roomId) {
+      _currentRoom = room;
+      debugPrint('[ChatService] 設置當前房間: $roomId');
+      notifyListeners();
     }
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'chat_service.dart';
 import 'chat_models.dart';
 import 'chat_room_open_manager.dart'; // 導入全局管理器
+import 'api_config.dart';
 
 class ChatPage extends StatefulWidget {
   final String roomId;
@@ -77,7 +78,7 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _connectToWebSocket() async {
     final success = await widget.chatService.connect(
-      'wss://near-ride-backend-api.onrender.com/ws',
+      ApiConfig.wsUrl,
       widget.roomId,
       widget.currentUser,
     );
