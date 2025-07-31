@@ -442,6 +442,16 @@ class ChatService extends ChangeNotifier {
       'type': 'create_room',
       'name': name,
     });
+    
+    // 設置超時，以防伺服器沒有回應 (15秒)
+    Future.delayed(const Duration(seconds: 15), () {
+      if (!completer.isCompleted) {
+        debugPrint('[ChatService] 創建房間 $name 超時 (15秒)');
+        _webSocketService.removeMessageListener(handler);
+        completer.complete(null);
+      }
+    });
+    
     return completer.future;
   }
 
@@ -490,10 +500,10 @@ class ChatService extends ChangeNotifier {
       'roomId': roomId,
     });
     
-    // 設置超時，以防伺服器沒有回應
-    Future.delayed(const Duration(seconds: 5), () {
+    // 設置超時，以防伺服器沒有回應 (增加到15秒給服務器更多時間)
+    Future.delayed(const Duration(seconds: 15), () {
       if (_joinRoomCompleters.containsKey(roomId) && !completer.isCompleted) {
-        debugPrint('[ChatService] 加入房間 $roomId 超時');
+        debugPrint('[ChatService] 加入房間 $roomId 超時 (15秒)');
         _joinRoomCompleters.remove(roomId);
         completer.complete(false);
       }
@@ -516,6 +526,16 @@ class ChatService extends ChangeNotifier {
       'type': 'leave_room',
       'roomId': roomId,
     });
+    
+    // 設置超時，以防伺服器沒有回應 (10秒，離開房間通常比較快)
+    Future.delayed(const Duration(seconds: 10), () {
+      if (!completer.isCompleted) {
+        debugPrint('[ChatService] 離開房間 $roomId 超時 (10秒)');
+        _webSocketService.removeMessageListener(handler);
+        completer.complete(false);
+      }
+    });
+    
     return completer.future;
   }
 

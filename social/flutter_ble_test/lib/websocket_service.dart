@@ -62,9 +62,9 @@ class WebSocketService {
           'User-Agent': 'Flutter-App/1.0',
         },
       ).timeout(
-        const Duration(seconds: 10),
+        const Duration(seconds: 15),
         onTimeout: () {
-          debugPrint('[WebSocket] 連接超時');
+          debugPrint('[WebSocket] 連接超時 (15秒)');
           throw Exception('WebSocket connection timeout');
         },
       );
