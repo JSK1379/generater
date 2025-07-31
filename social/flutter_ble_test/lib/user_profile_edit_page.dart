@@ -31,6 +31,7 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
   List<Map<String, dynamic>> _availableHobbies = [];
   bool _isLoading = false;
   bool _isLoadingProfile = true;
+  bool _isAvatarProcessing = false; // 追蹤頭像是否正在處理中
   
   // 頭貼相關變數
   ImageProvider? _avatarImageProvider;
@@ -337,7 +338,7 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
           String message;
           if (hasAvatarUpload && avatarSuccess) {
             if (avatarUploadResult == 'success_no_url') {
-              message = '用戶資料和頭貼更新成功（頭貼處理中，請稍後刷新頁面查看）';
+              message = '用戶資料更新成功！頭貼已上傳，正在處理中...';
             } else {
               message = '用戶資料和頭貼更新成功';
             }
@@ -493,6 +494,13 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
           
           debugPrint('[UserProfileEdit] base64 頭像上傳成功，但未返回 URL。伺服器可能需要時間處理。');
           debugPrint('[UserProfileEdit] 伺服器回應: ${response.body}');
+          
+          // 🔄 延遲後重新載入用戶資料，嘗試獲取處理完成的頭像 URL
+          setState(() {
+            _isAvatarProcessing = true;
+          });
+          _scheduleAvatarReload();
+          
           return 'success_no_url';
         }
       } else {
@@ -503,6 +511,64 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
       debugPrint('[UserProfileEdit] base64 頭像上傳錯誤: $e');
       return null;
     }
+  }
+  
+  // 📷 排程頭像重新載入，用於等待伺服器處理完成後獲取頭像 URL
+  void _scheduleAvatarReload() {
+    // 延遲3秒後重新載入，給伺服器處理時間
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) {
+        debugPrint('[UserProfileEdit] 開始重新載入用戶資料以獲取頭像 URL...');
+        _loadUserProfile().then((_) {
+          // 檢查是否成功獲取到頭像 URL
+          if (_currentAvatarUrl != null && _currentAvatarUrl!.isNotEmpty) {
+            debugPrint('[UserProfileEdit] ✅ 頭像 URL 已更新: $_currentAvatarUrl');
+            setState(() {
+              _isAvatarProcessing = false;
+            });
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('頭像處理完成！'),
+                  backgroundColor: Colors.green,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+          } else {
+            debugPrint('[UserProfileEdit] ⚠️ 頭像仍在處理中，將再次嘗試...');
+            // 如果仍未成功，再延遲5秒嘗試一次
+            Future.delayed(const Duration(seconds: 5), () {
+              if (mounted) {
+                debugPrint('[UserProfileEdit] 第二次嘗試重新載入用戶資料...');
+                _loadUserProfile().then((_) {
+                  if (_currentAvatarUrl != null && _currentAvatarUrl!.isNotEmpty) {
+                    debugPrint('[UserProfileEdit] ✅ 頭像 URL 已更新（第二次嘗試）: $_currentAvatarUrl');
+                    setState(() {
+                      _isAvatarProcessing = false;
+                    });
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('頭像處理完成！'),
+                          backgroundColor: Colors.green,
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  } else {
+                    debugPrint('[UserProfileEdit] ⚠️ 頭像處理仍未完成，請手動刷新頁面');
+                    setState(() {
+                      _isAvatarProcessing = false;
+                    });
+                  }
+                });
+              }
+            });
+          }
+        });
+      }
+    });
   }
 
   @override
@@ -609,16 +675,28 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          _selectedAvatarFile != null 
-                              ? '已選擇新頭貼' 
-                              : '點擊更換頭貼',
+                          _isAvatarProcessing
+                              ? '頭貼處理中...'
+                              : (_selectedAvatarFile != null 
+                                  ? '已選擇新頭貼' 
+                                  : '點擊更換頭貼'),
                           style: TextStyle(
-                            color: _selectedAvatarFile != null 
-                                ? Colors.green 
-                                : Colors.grey[600],
+                            color: _isAvatarProcessing
+                                ? Colors.orange
+                                : (_selectedAvatarFile != null 
+                                    ? Colors.green 
+                                    : Colors.grey[600]),
                             fontSize: 12,
                           ),
                         ),
+                        if (_isAvatarProcessing) ...[
+                          const SizedBox(height: 8),
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ],
                       ],
                     ),
                   ),
