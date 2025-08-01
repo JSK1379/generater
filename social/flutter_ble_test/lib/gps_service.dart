@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'api_config.dart';
+import 'background_gps_service.dart';
 
 /// GPS定位服務類
 /// 提供GPS記錄、查詢等功能
@@ -164,6 +166,112 @@ class GPSService {
       return GPSHistoryResult.error('查詢失敗: $e');
     }
   }
+
+  /// 🔄 開始背景GPS追蹤
+  /// [userId] 用戶ID
+  /// [intervalMinutes] 追蹤間隔（分鐘），默認15分鐘
+  static Future<bool> startBackgroundTracking(
+    String userId, {
+    int intervalMinutes = 15,
+  }) async {
+    try {
+      // 初始化背景服務
+      await BackgroundGPSService.initialize();
+      
+      // 開始背景追蹤
+      final success = await BackgroundGPSService.startBackgroundTracking(
+        intervalMinutes: intervalMinutes,
+        userId: userId,
+      );
+      
+      if (success) {
+        // 保存追蹤狀態到本地
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('gps_background_tracking', true);
+        await prefs.setString('gps_tracking_user_id', userId);
+        await prefs.setInt('gps_tracking_interval', intervalMinutes);
+        
+        debugPrint('[GPSService] ✅ 背景GPS追蹤已啟動');
+        return true;
+      } else {
+        debugPrint('[GPSService] ❌ 背景GPS追蹤啟動失敗');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('[GPSService] ❌ 啟動背景追蹤異常: $e');
+      return false;
+    }
+  }
+
+  /// 🛑 停止背景GPS追蹤
+  static Future<bool> stopBackgroundTracking() async {
+    try {
+      final success = await BackgroundGPSService.stopBackgroundTracking();
+      
+      if (success) {
+        // 更新本地狀態
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('gps_background_tracking', false);
+        
+        debugPrint('[GPSService] ✅ 背景GPS追蹤已停止');
+        return true;
+      } else {
+        debugPrint('[GPSService] ❌ 背景GPS追蹤停止失敗');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('[GPSService] ❌ 停止背景追蹤異常: $e');
+      return false;
+    }
+  }
+
+  /// 📊 獲取背景追蹤狀態
+  static Future<GPSBackgroundStatus> getBackgroundTrackingStatus() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final isEnabled = await BackgroundGPSService.isBackgroundTrackingEnabled();
+      final config = await BackgroundGPSService.getBackgroundTrackingConfig();
+      
+      return GPSBackgroundStatus(
+        isEnabled: isEnabled,
+        userId: config['userId'] ?? '',
+        intervalMinutes: config['intervalMinutes'] ?? 15,
+        lastUpdateTime: prefs.getString('gps_last_update'),
+      );
+    } catch (e) {
+      debugPrint('[GPSService] ❌ 獲取背景追蹤狀態異常: $e');
+      return GPSBackgroundStatus(
+        isEnabled: false,
+        userId: '',
+        intervalMinutes: 15,
+      );
+    }
+  }
+
+  /// 🔧 更新背景追蹤間隔
+  /// [intervalMinutes] 新的追蹤間隔（分鐘）
+  static Future<bool> updateBackgroundTrackingInterval(int intervalMinutes) async {
+    try {
+      final status = await getBackgroundTrackingStatus();
+      
+      if (status.isEnabled && status.userId.isNotEmpty) {
+        // 先停止當前追蹤
+        await stopBackgroundTracking();
+        
+        // 以新間隔重新開始
+        return await startBackgroundTracking(
+          status.userId,
+          intervalMinutes: intervalMinutes,
+        );
+      } else {
+        debugPrint('[GPSService] ⚠️ 背景追蹤未啟用，無法更新間隔');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('[GPSService] ❌ 更新背景追蹤間隔異常: $e');
+      return false;
+    }
+  }
 }
 
 /// GPS記錄結果
@@ -281,5 +389,34 @@ class GPSLocation {
   @override
   String toString() {
     return 'GPSLocation(id: $id, lat: $latitude, lng: $longitude, time: $timestamp)';
+  }
+}
+
+/// GPS背景追蹤狀態
+class GPSBackgroundStatus {
+  final bool isEnabled;
+  final String userId;
+  final int intervalMinutes;
+  final String? lastUpdateTime;
+
+  GPSBackgroundStatus({
+    required this.isEnabled,
+    required this.userId,
+    required this.intervalMinutes,
+    this.lastUpdateTime,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'isEnabled': isEnabled,
+      'userId': userId,
+      'intervalMinutes': intervalMinutes,
+      'lastUpdateTime': lastUpdateTime,
+    };
+  }
+
+  @override
+  String toString() {
+    return 'GPSBackgroundStatus(enabled: $isEnabled, user: $userId, interval: ${intervalMinutes}min, lastUpdate: $lastUpdateTime)';
   }
 }

@@ -12,6 +12,7 @@ import 'main_tab_page.dart';
 import 'settings_ble_helper.dart';
 import 'user_profile_edit_page.dart';
 import 'api_config.dart';
+import 'gps_background_settings_page.dart';
 
 class SettingsPage extends StatefulWidget {
   final bool isAdvertising;
@@ -721,6 +722,27 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 12),
+                    // 背景GPS追蹤設定按鈕
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const GPSBackgroundSettingsPage(),
+                            ),
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.purple,
+                          foregroundColor: Colors.white,
+                        ),
+                        icon: const Icon(Icons.settings_backup_restore),
+                        label: const Text('背景GPS追蹤設定'),
+                      ),
                     ),
                     const SizedBox(height: 24),
                     

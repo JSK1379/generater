@@ -4,8 +4,19 @@ import 'user_id_setup_page_new.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'chat_service_singleton.dart';
 import 'api_config.dart';
+import 'background_gps_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // 初始化背景GPS服務
+  try {
+    await BackgroundGPSService.initialize();
+    debugPrint('[Main] 背景GPS服務初始化完成');
+  } catch (e) {
+    debugPrint('[Main] 背景GPS服務初始化失敗: $e');
+  }
+  
   runApp(const MyApp());
 }
 
