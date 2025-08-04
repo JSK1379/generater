@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geolocator/geolocator.dart';
@@ -15,6 +16,8 @@ class BackgroundGPSService {
   static const String _taskTag = "gps_tracking";
   
   static FlutterLocalNotificationsPlugin? _notifications;
+  static Timer? _highFrequencyTimer;
+  static String? _currentUserId;
   
   /// 初始化背景服務
   static Future<void> initialize() async {
@@ -23,6 +26,9 @@ class BackgroundGPSService {
     
     // 初始化通知
     await _initializeNotifications();
+    
+    // 檢查並恢復高頻率追蹤
+    await _resumeHighFrequencyTrackingIfNeeded();
     
     debugPrint('[BackgroundGPS] 背景GPS服務初始化完成');
   }
@@ -47,10 +53,30 @@ class BackgroundGPSService {
     
     // 請求通知權限
     await _notifications?.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>()?.requestExactAlarmsPermission();
-    
-    await _notifications?.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>()?.requestNotificationsPermission();
+  }
+  
+  /// 檢查並恢復高頻率追蹤
+  static Future<void> _resumeHighFrequencyTrackingIfNeeded() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final isHighFrequencyEnabled = prefs.getBool('high_frequency_gps_enabled') ?? false;
+      
+      if (isHighFrequencyEnabled) {
+        final userId = prefs.getString('background_gps_user_id');
+        final intervalSeconds = prefs.getInt('background_gps_interval_seconds');
+        
+        if (userId != null && intervalSeconds != null) {
+          debugPrint('[BackgroundGPS] 🔄 恢復高頻率追蹤: $intervalSeconds秒間隔');
+          await startHighFrequencyTracking(
+            intervalSeconds: intervalSeconds,
+            userId: userId,
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('[BackgroundGPS] ❌ 恢復高頻率追蹤失敗: $e');
+    }
   }
   
   /// 開始高頻率GPS追蹤（用於短間隔如30秒、1分鐘等）
@@ -66,14 +92,29 @@ class BackgroundGPSService {
         return false;
       }
       
+      // 停止現有的高頻率計時器
+      _highFrequencyTimer?.cancel();
+      
       // 保存配置
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('background_gps_user_id', userId);
       await prefs.setInt('background_gps_interval_seconds', intervalSeconds);
       await prefs.setBool('high_frequency_gps_enabled', true);
+      _currentUserId = userId;
       
       // 顯示持續通知
       await _showHighFrequencyNotification(intervalSeconds);
+      
+      // 啟動定期執行的計時器
+      _highFrequencyTimer = Timer.periodic(
+        Duration(seconds: intervalSeconds),
+        (timer) async {
+          await _executeHighFrequencyGPSRecord();
+        },
+      );
+      
+      // 立即執行一次
+      await _executeHighFrequencyGPSRecord();
       
       debugPrint('[BackgroundGPS] ✅ 高頻率GPS追蹤已開始，間隔: $intervalSeconds秒');
       return true;
@@ -87,6 +128,11 @@ class BackgroundGPSService {
   /// 停止高頻率GPS追蹤
   static Future<bool> stopHighFrequencyTracking() async {
     try {
+      // 停止計時器
+      _highFrequencyTimer?.cancel();
+      _highFrequencyTimer = null;
+      _currentUserId = null;
+      
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('high_frequency_gps_enabled', false);
       
@@ -135,6 +181,37 @@ class BackgroundGPSService {
     );
   }
 
+  /// 執行高頻率GPS記錄
+  static Future<void> _executeHighFrequencyGPSRecord() async {
+    if (_currentUserId == null) {
+      debugPrint('[BackgroundGPS] ⚠️ 高頻率追蹤：缺少用戶ID');
+      return;
+    }
+    
+    try {
+      final result = await _recordLocationInBackground(_currentUserId!);
+      
+      if (result['success'] == true) {
+        debugPrint('[BackgroundGPS] ✅ 高頻率GPS記錄成功');
+        
+        // 檢查是否需要顯示通知
+        final prefs = await SharedPreferences.getInstance();
+        final showNotifications = prefs.getBool('show_gps_notifications') ?? false;
+        if (showNotifications) {
+          await showGPSRecordNotification(
+            latitude: result['latitude'],
+            longitude: result['longitude'],
+            timestamp: result['timestamp'],
+          );
+        }
+      } else {
+        debugPrint('[BackgroundGPS] ❌ 高頻率GPS記錄失敗: ${result['error']}');
+      }
+    } catch (e) {
+      debugPrint('[BackgroundGPS] ❌ 高頻率GPS記錄異常: $e');
+    }
+  }
+
   /// 開始背景GPS追蹤
   /// [intervalMinutes] 追蹤間隔（分鐘），默認15分鐘
   /// [userId] 用戶ID
@@ -162,11 +239,18 @@ class BackgroundGPSService {
       // 對於小於15分鐘的間隔，使用高頻率追蹤模式
       if (intervalMinutes < 15) {
         debugPrint('[BackgroundGPS] ⚠️ 間隔$intervalMinutes分鐘小於WorkManager最小限制，切換至高頻率模式');
+        
+        // 停止現有的 WorkManager 任務
+        await Workmanager().cancelByUniqueName(_taskName);
+        
         return await startHighFrequencyTracking(
           intervalSeconds: intervalMinutes * 60,
           userId: userId,
         );
       }
+      
+      // 如果切換到長間隔模式，停止高頻率追蹤
+      await stopHighFrequencyTracking();
       
       // 保存用戶ID到本地存儲
       final prefs = await SharedPreferences.getInstance();
@@ -207,6 +291,9 @@ class BackgroundGPSService {
     try {
       // 取消背景任務
       await Workmanager().cancelByUniqueName(_taskName);
+      
+      // 停止高頻率追蹤
+      await stopHighFrequencyTracking();
       
       // 更新本地存儲
       final prefs = await SharedPreferences.getInstance();
