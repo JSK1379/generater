@@ -19,7 +19,7 @@ class BackgroundGPSService {
   /// 初始化背景服務
   static Future<void> initialize() async {
     // 初始化 WorkManager
-    await Workmanager().initialize(callbackDispatcher, isInDebugMode: true);
+    await Workmanager().initialize(callbackDispatcher);
     
     // 初始化通知
     await _initializeNotifications();
@@ -53,6 +53,88 @@ class BackgroundGPSService {
         AndroidFlutterLocalNotificationsPlugin>()?.requestNotificationsPermission();
   }
   
+  /// 開始高頻率GPS追蹤（用於短間隔如30秒、1分鐘等）
+  /// 使用前台服務實現
+  static Future<bool> startHighFrequencyTracking({
+    required int intervalSeconds,
+    required String userId,
+  }) async {
+    try {
+      // 檢查定位權限
+      if (!await GPSService.checkAndRequestLocationPermission()) {
+        debugPrint('[BackgroundGPS] 定位權限被拒絕，無法開始高頻率追蹤');
+        return false;
+      }
+      
+      // 保存配置
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('background_gps_user_id', userId);
+      await prefs.setInt('background_gps_interval_seconds', intervalSeconds);
+      await prefs.setBool('high_frequency_gps_enabled', true);
+      
+      // 顯示持續通知
+      await _showHighFrequencyNotification(intervalSeconds);
+      
+      debugPrint('[BackgroundGPS] ✅ 高頻率GPS追蹤已開始，間隔: $intervalSeconds秒');
+      return true;
+      
+    } catch (e) {
+      debugPrint('[BackgroundGPS] ❌ 開始高頻率追蹤失敗: $e');
+      return false;
+    }
+  }
+  
+  /// 停止高頻率GPS追蹤
+  static Future<bool> stopHighFrequencyTracking() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('high_frequency_gps_enabled', false);
+      
+      // 取消高頻率通知
+      await _notifications?.cancel(2);
+      
+      debugPrint('[BackgroundGPS] ✅ 高頻率GPS追蹤已停止');
+      return true;
+      
+    } catch (e) {
+      debugPrint('[BackgroundGPS] ❌ 停止高頻率追蹤失敗: $e');
+      return false;
+    }
+  }
+  
+  /// 顯示高頻率追蹤通知
+  static Future<void> _showHighFrequencyNotification(int intervalSeconds) async {
+    final androidDetails = AndroidNotificationDetails(
+      'high_frequency_gps_channel',
+      '高頻率GPS追蹤',
+      channelDescription: '高頻率追蹤GPS位置（$intervalSeconds秒間隔）',
+      importance: Importance.low,
+      priority: Priority.low,
+      ongoing: true,
+      autoCancel: false,
+      showWhen: true,
+      icon: '@mipmap/ic_launcher',
+    );
+    
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: false,
+      presentBadge: false,
+      presentSound: false,
+    );
+    
+    final details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    await _notifications?.show(
+      2,
+      'GPS高頻率追蹤運行中',
+      '每$intervalSeconds秒記錄一次位置',
+      details,
+    );
+  }
+
   /// 開始背景GPS追蹤
   /// [intervalMinutes] 追蹤間隔（分鐘），默認15分鐘
   /// [userId] 用戶ID
@@ -77,13 +159,22 @@ class BackgroundGPSService {
         }
       }
       
+      // 對於小於15分鐘的間隔，使用高頻率追蹤模式
+      if (intervalMinutes < 15) {
+        debugPrint('[BackgroundGPS] ⚠️ 間隔$intervalMinutes分鐘小於WorkManager最小限制，切換至高頻率模式');
+        return await startHighFrequencyTracking(
+          intervalSeconds: intervalMinutes * 60,
+          userId: userId,
+        );
+      }
+      
       // 保存用戶ID到本地存儲
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('background_gps_user_id', userId);
       await prefs.setInt('background_gps_interval', intervalMinutes);
       await prefs.setBool('background_gps_enabled', true);
       
-      // 註冊背景任務
+      // 註冊背景任務（15分鐘或以上間隔）
       await Workmanager().registerPeriodicTask(
         _taskName,
         _taskTag,

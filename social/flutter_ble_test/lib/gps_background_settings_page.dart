@@ -14,11 +14,14 @@ class _GPSBackgroundSettingsPageState extends State<GPSBackgroundSettingsPage> {
   bool _isLoading = true;
   bool _isBackgroundTrackingEnabled = false;
   int _trackingInterval = 15; // 分鐘
+  int _selectedIntervalSeconds = 900; // 預設15分鐘的秒數
   String _userId = '';
   String? _lastUpdateTime;
   bool _showNotifications = false;
 
-  final List<int> _intervalOptions = [5, 10, 15, 30, 60]; // 分鐘選項
+  // 間隔選項（以秒為單位）
+  final List<int> _intervalOptionsSeconds = [30, 60, 300, 600, 900, 1800, 3600]; // 30秒, 1分, 5分, 10分, 15分, 30分, 60分
+  final List<String> _intervalLabels = ['30 秒', '1 分鐘', '5 分鐘', '10 分鐘', '15 分鐘', '30 分鐘', '60 分鐘'];
 
   @override
   void initState() {
@@ -37,6 +40,25 @@ class _GPSBackgroundSettingsPageState extends State<GPSBackgroundSettingsPage> {
       setState(() {
         _isBackgroundTrackingEnabled = status.isEnabled;
         _trackingInterval = status.intervalMinutes;
+        // 如果間隔是1分鐘，檢查是否實際設定為30秒
+        if (status.intervalMinutes == 1) {
+          // 檢查 SharedPreferences 中是否有高頻設定
+          final prefs = SharedPreferences.getInstance();
+          prefs.then((prefs) {
+            final intervalSeconds = prefs.getInt('background_gps_interval_seconds');
+            if (intervalSeconds != null && intervalSeconds == 30) {
+              setState(() {
+                _selectedIntervalSeconds = 30;
+              });
+            } else {
+              setState(() {
+                _selectedIntervalSeconds = 60; // 1分鐘
+              });
+            }
+          });
+        } else {
+          _selectedIntervalSeconds = status.intervalMinutes * 60; // 轉換為秒
+        }
         _lastUpdateTime = status.lastUpdateTime;
         _showNotifications = prefs.getBool('show_gps_notifications') ?? false;
         _isLoading = false;
@@ -96,23 +118,28 @@ class _GPSBackgroundSettingsPageState extends State<GPSBackgroundSettingsPage> {
   }
 
   /// 更新追蹤間隔
-  Future<void> _updateTrackingInterval(int intervalMinutes) async {
+  Future<void> _updateTrackingInterval(int intervalSeconds) async {
     setState(() {
       _isLoading = true;
     });
 
     try {
+      // 將秒轉換為分鐘（最小1分鐘）
+      final intervalMinutes = (intervalSeconds / 60).ceil();
+      
       if (_isBackgroundTrackingEnabled) {
         final success = await GPSService.updateBackgroundTrackingInterval(intervalMinutes);
+        final label = _getIntervalLabel(intervalSeconds);
         if (success) {
-          _showSuccess('追蹤間隔已更新為 $intervalMinutes 分鐘');
+          _showSuccess('追蹤間隔已更新為 $label');
         } else {
           _showError('更新追蹤間隔失敗');
         }
       }
 
       setState(() {
-        _trackingInterval = intervalMinutes;
+        _trackingInterval = intervalMinutes; // 保存為分鐘單位
+        _selectedIntervalSeconds = intervalSeconds; // 保存實際選擇的秒數
       });
     } catch (e) {
       _showError('更新間隔失敗: $e');
@@ -121,6 +148,12 @@ class _GPSBackgroundSettingsPageState extends State<GPSBackgroundSettingsPage> {
     setState(() {
       _isLoading = false;
     });
+  }
+
+  /// 獲取間隔標籤
+  String _getIntervalLabel(int intervalSeconds) {
+    final index = _intervalOptionsSeconds.indexOf(intervalSeconds);
+    return index >= 0 ? _intervalLabels[index] : '$intervalSeconds 秒';
   }
 
   /// 切換通知設定
@@ -233,7 +266,7 @@ class _GPSBackgroundSettingsPageState extends State<GPSBackgroundSettingsPage> {
                           ),
                           if (_isBackgroundTrackingEnabled) ...[
                             const SizedBox(height: 8),
-                            Text('追蹤間隔: $_trackingInterval 分鐘'),
+                            Text('追蹤間隔: ${_getIntervalLabel(_selectedIntervalSeconds)}'),
                             if (_lastUpdateTime != null) ...[
                               const SizedBox(height: 4),
                               Text('最後更新: $_lastUpdateTime'),
@@ -289,22 +322,45 @@ class _GPSBackgroundSettingsPageState extends State<GPSBackgroundSettingsPage> {
                           const SizedBox(height: 12),
                           Wrap(
                             spacing: 8,
-                            children: _intervalOptions.map((interval) {
-                              final isSelected = _trackingInterval == interval;
+                            children: List.generate(_intervalOptionsSeconds.length, (index) {
+                              final intervalSeconds = _intervalOptionsSeconds[index];
+                              final label = _intervalLabels[index];
+                              final isSelected = _selectedIntervalSeconds == intervalSeconds; // 直接比較秒數
                               return ChoiceChip(
-                                label: Text('$interval 分鐘'),
+                                label: Text(label),
                                 selected: isSelected,
-                                onSelected: (_) => _updateTrackingInterval(interval),
+                                onSelected: (_) => _updateTrackingInterval(intervalSeconds),
                               );
-                            }).toList(),
+                            }),
                           ),
                           const SizedBox(height: 8),
-                          Text(
-                            '⚠️ 較短的間隔會消耗更多電量',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.orange[700],
-                            ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '⚠️ 較短的間隔會消耗更多電量',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.orange[700],
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '📱 1-14分鐘間隔使用高頻模式，需要應用保持在背景運行',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.blue[600],
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '🔋 15分鐘以上間隔使用節能模式，可在應用關閉時運行',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.green[600],
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
