@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 import 'api_config.dart';
 import 'gps_service.dart';
+import 'foreground_location_service.dart';
 
 /// 背景GPS服務管理器
 /// 負責管理背景定位任務、通知等功能
@@ -18,6 +19,8 @@ class BackgroundGPSService {
   static FlutterLocalNotificationsPlugin? _notifications;
   static Timer? _highFrequencyTimer;
   static String? _currentUserId;
+  static StreamSubscription<Map<String, dynamic>>? _locationSubscription;
+  static bool _useForegroundService = false;
   
   /// 初始化背景服務
   static Future<void> initialize() async {
@@ -26,6 +29,9 @@ class BackgroundGPSService {
     
     // 初始化通知
     await _initializeNotifications();
+    
+    // 初始化前台定位服務
+    await ForegroundLocationService.initialize();
     
     // 檢查並恢復高頻率追蹤
     await _resumeHighFrequencyTrackingIfNeeded();
@@ -80,7 +86,7 @@ class BackgroundGPSService {
   }
   
   /// 開始高頻率GPS追蹤（用於短間隔如30秒、1分鐘等）
-  /// 使用前台服務實現
+  /// 優先使用前台服務實現真正的背景追蹤
   static Future<bool> startHighFrequencyTracking({
     required int intervalSeconds,
     required String userId,
@@ -92,8 +98,8 @@ class BackgroundGPSService {
         return false;
       }
       
-      // 停止現有的高頻率計時器
-      _highFrequencyTimer?.cancel();
+      // 停止現有的追蹤
+      await stopHighFrequencyTracking();
       
       // 保存配置
       final prefs = await SharedPreferences.getInstance();
@@ -102,22 +108,27 @@ class BackgroundGPSService {
       await prefs.setBool('high_frequency_gps_enabled', true);
       _currentUserId = userId;
       
-      // 顯示持續通知
-      await _showHighFrequencyNotification(intervalSeconds);
-      
-      // 啟動定期執行的計時器
-      _highFrequencyTimer = Timer.periodic(
-        Duration(seconds: intervalSeconds),
-        (timer) async {
-          await _executeHighFrequencyGPSRecord();
-        },
+      // 嘗試使用前台服務
+      final foregroundServiceStarted = await ForegroundLocationService.startService(
+        intervalSeconds: intervalSeconds,
+        userId: userId,
       );
       
-      // 立即執行一次
-      await _executeHighFrequencyGPSRecord();
-      
-      debugPrint('[BackgroundGPS] ✅ 高頻率GPS追蹤已開始，間隔: $intervalSeconds秒');
-      return true;
+      if (foregroundServiceStarted) {
+        _useForegroundService = true;
+        
+        // 監聽前台服務的位置更新
+        _locationSubscription = ForegroundLocationService.locationStream.listen((locationData) {
+          _onForegroundLocationReceived(locationData);
+        });
+        
+        debugPrint('[BackgroundGPS] ✅ 前台服務GPS追蹤已開始，間隔: $intervalSeconds秒');
+        return true;
+      } else {
+        // 前台服務啟動失敗，回退到 Timer 模式
+        debugPrint('[BackgroundGPS] ⚠️ 前台服務啟動失敗，回退到Timer模式');
+        return await _startTimerBasedTracking(intervalSeconds, userId);
+      }
       
     } catch (e) {
       debugPrint('[BackgroundGPS] ❌ 開始高頻率追蹤失敗: $e');
@@ -125,9 +136,62 @@ class BackgroundGPSService {
     }
   }
   
+  /// 處理前台服務的位置更新
+  static Future<void> _onForegroundLocationReceived(Map<String, dynamic> locationData) async {
+    try {
+      final latitude = locationData['latitude'] as double;
+      final longitude = locationData['longitude'] as double;
+      
+      debugPrint('[BackgroundGPS] ✅ 前台服務GPS記錄成功: $latitude, $longitude');
+      
+      // 檢查是否需要顯示通知
+      final prefs = await SharedPreferences.getInstance();
+      final showNotifications = prefs.getBool('show_gps_notifications') ?? false;
+      if (showNotifications) {
+        await showGPSRecordNotification(
+          latitude: latitude,
+          longitude: longitude,
+          timestamp: DateTime.now().toIso8601String(),
+        );
+      }
+    } catch (e) {
+      debugPrint('[BackgroundGPS] ❌ 處理前台服務位置更新失敗: $e');
+    }
+  }
+  
+  /// 使用Timer的備用追蹤模式
+  static Future<bool> _startTimerBasedTracking(int intervalSeconds, String userId) async {
+    _useForegroundService = false;
+    
+    // 顯示持續通知
+    await _showHighFrequencyNotification(intervalSeconds);
+    
+    // 啟動定期執行的計時器
+    _highFrequencyTimer = Timer.periodic(
+      Duration(seconds: intervalSeconds),
+      (timer) async {
+        await _executeHighFrequencyGPSRecord();
+      },
+    );
+    
+    // 立即執行一次
+    await _executeHighFrequencyGPSRecord();
+    
+    debugPrint('[BackgroundGPS] ✅ Timer模式GPS追蹤已開始，間隔: $intervalSeconds秒');
+    return true;
+  }
+  
   /// 停止高頻率GPS追蹤
   static Future<bool> stopHighFrequencyTracking() async {
     try {
+      // 停止前台服務
+      if (_useForegroundService) {
+        await ForegroundLocationService.stopService();
+        _locationSubscription?.cancel();
+        _locationSubscription = null;
+        _useForegroundService = false;
+      }
+      
       // 停止計時器
       _highFrequencyTimer?.cancel();
       _highFrequencyTimer = null;

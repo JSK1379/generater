@@ -62,6 +62,12 @@
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="location"
             android:exported="false" />
+            
+        <!-- 自定義前台定位服務 -->
+        <service
+            android:name=".LocationForegroundService"
+            android:foregroundServiceType="location"
+            android:exported="false" />
 
     </application>
 
