@@ -14,13 +14,7 @@ import 'enhanced_foreground_location_service.dart';
 /// 背景GPS服務管理器
 /// 負責管理背景定位任務、通知等功能
 class BackgroundGPSService {
-  static const String _taskName = "backgroundGPSTask";
-  
   static FlutterLocalNotificationsPlugin? _notifications;
-  static Timer? _highFrequencyTimer;
-  static String? _currentUserId;
-  static StreamSubscription<Map<String, dynamic>>? _locationSubscription;
-  static bool _useForegroundService = false;
   
   /// 初始化背景服務
   static Future<void> initialize() async {
@@ -123,9 +117,7 @@ class BackgroundGPSService {
         await prefs.setString('commute_time_settings', jsonEncode(commuteTimeSettings));
       }
       
-      _currentUserId = userId;
-      
-      // 優先使用增強版前台服務（真正的背景運行）
+      // 只使用增強版前台服務（真正的背景運行）
       debugPrint('[BackgroundGPS] 🚀 啟動增強版前台服務...');
       final enhancedServiceStarted = await EnhancedForegroundLocationService.startService(
         userId: userId,
@@ -134,8 +126,6 @@ class BackgroundGPSService {
       );
       
       if (enhancedServiceStarted) {
-        _useForegroundService = true;
-        
         // 監聽增強版服務的統計數據
         EnhancedForegroundLocationService.statsStream.listen((stats) {
           _handleEnhancedServiceStats(stats);
@@ -143,30 +133,9 @@ class BackgroundGPSService {
         
         debugPrint('[BackgroundGPS] ✅ 增強版前台服務已啟動，間隔: $intervalSeconds秒');
       } else {
-        // 增強版服務啟動失敗，使用舊版前台服務
-        debugPrint('[BackgroundGPS] ⚠️ 增強版服務啟動失敗，使用舊版前台服務');
-        final foregroundServiceStarted = await ForegroundLocationService.startService(
-          intervalSeconds: intervalSeconds,
-          userId: userId,
-        );
-        
-        if (foregroundServiceStarted) {
-          _useForegroundService = true;
-          
-          // 監聽前台服務的位置更新
-          _locationSubscription = ForegroundLocationService.locationStream.listen((locationData) {
-            _onForegroundLocationReceived(locationData);
-          });
-          
-          // 顯示前台服務通知
-          await _showForegroundServiceNotification(intervalSeconds);
-          
-          debugPrint('[BackgroundGPS] ✅ 舊版前台服務已啟動，間隔: $intervalSeconds秒');
-        } else {
-          // 前台服務啟動失敗，使用Timer + WakeLock模式
-          debugPrint('[BackgroundGPS] ⚠️ 前台服務啟動失敗，使用Timer + WakeLock模式');
-          await _startTimerWithWakeLock(intervalSeconds, userId);
-        }
+        // 增強版服務啟動失敗，直接返回失敗
+        debugPrint('[BackgroundGPS] ❌ 增強版服務啟動失敗');
+        return false;
       }
       
       // 立即記錄一次GPS位置（啟動時）
@@ -189,125 +158,6 @@ class BackgroundGPSService {
       debugPrint('[BackgroundGPS] ❌ 開始背景追蹤失敗: $e');
       return false;
     }
-  }
-
-  /// 顯示前台服務通知（持續性）
-  static Future<void> _showForegroundServiceNotification(int intervalSeconds) async {
-    const androidDetails = AndroidNotificationDetails(
-      'foreground_gps_service',
-      'GPS前台服務',
-      channelDescription: '高頻率GPS定位服務（類似Google Maps）',
-      importance: Importance.low,
-      priority: Priority.low,
-      ongoing: true,
-      autoCancel: false,
-      showWhen: true,
-      icon: '@mipmap/ic_launcher',
-      category: AndroidNotificationCategory.service,
-      visibility: NotificationVisibility.public,
-    );
-    
-    const iosDetails = DarwinNotificationDetails(
-      presentAlert: false,
-      presentBadge: false,
-      presentSound: false,
-    );
-    
-    const details = NotificationDetails(
-      android: androidDetails,
-      iOS: iosDetails,
-    );
-
-    await _notifications?.show(
-      1,
-      'GPS追蹤運行中 🛰️',
-      '高精度定位服務 - 每$intervalSeconds秒記錄位置',
-      details,
-    );
-  }
-
-  /// 使用Timer + WakeLock的備用高頻率追蹤
-  static Future<void> _startTimerWithWakeLock(int intervalSeconds, String userId) async {
-    _useForegroundService = false;
-    
-    // 顯示Timer模式通知
-    await _showTimerModeNotification(intervalSeconds);
-    
-    // 啟動高頻率計時器
-    _highFrequencyTimer = Timer.periodic(
-      Duration(seconds: intervalSeconds),
-      (timer) async {
-        await _executeHighFrequencyGPSRecord();
-      },
-    );
-    
-    // 立即執行一次
-    await _executeHighFrequencyGPSRecord();
-  }
-
-  /// 執行高頻率GPS記錄
-  static Future<void> _executeHighFrequencyGPSRecord() async {
-    if (_currentUserId == null) {
-      debugPrint('[BackgroundGPS] ⚠️ GPS記錄：缺少用戶ID');
-      return;
-    }
-    
-    try {
-      final result = await _recordLocationInBackground(_currentUserId!);
-      
-      if (result['success'] == true) {
-        debugPrint('[BackgroundGPS] ✅ GPS記錄成功');
-        
-        // 檢查是否需要顯示通知
-        final prefs = await SharedPreferences.getInstance();
-        final showNotifications = prefs.getBool('show_gps_notifications') ?? false;
-        if (showNotifications) {
-          await showGPSRecordNotification(
-            latitude: result['latitude'],
-            longitude: result['longitude'],
-            timestamp: result['timestamp'],
-          );
-        }
-      } else {
-        debugPrint('[BackgroundGPS] ❌ GPS記錄失敗: ${result['error']}');
-      }
-    } catch (e) {
-      debugPrint('[BackgroundGPS] ❌ GPS記錄異常: $e');
-    }
-  }
-
-  /// 顯示Timer模式通知
-  static Future<void> _showTimerModeNotification(int intervalSeconds) async {
-    const androidDetails = AndroidNotificationDetails(
-      'timer_gps_mode',
-      'GPS Timer模式',
-      channelDescription: 'Timer定時GPS記錄（需保持前台）',
-      importance: Importance.defaultImportance,
-      priority: Priority.defaultPriority,
-      ongoing: true,
-      autoCancel: false,
-      showWhen: true,
-      icon: '@mipmap/ic_launcher',
-      color: Color.fromARGB(255, 255, 165, 0), // 橙色提醒
-    );
-    
-    const iosDetails = DarwinNotificationDetails(
-      presentAlert: false,
-      presentBadge: false,
-      presentSound: false,
-    );
-    
-    const details = NotificationDetails(
-      android: androidDetails,
-      iOS: iosDetails,
-    );
-
-    await _notifications?.show(
-      2,
-      'GPS追蹤運行中 ⚡ (Timer模式)',
-      '每$intervalSeconds秒記錄 - 請保持應用前台運行',
-      details,
-    );
   }
 
   /// 立即記錄GPS位置（用於啟動時）
@@ -440,61 +290,18 @@ class BackgroundGPSService {
     }
   }
 
-  /// 處理前台服務的位置更新
-  static Future<void> _onForegroundLocationReceived(Map<String, dynamic> locationData) async {
-    try {
-      final latitude = locationData['latitude'] as double;
-      final longitude = locationData['longitude'] as double;
-      
-      debugPrint('[BackgroundGPS] ✅ 前台服務GPS記錄成功: $latitude, $longitude');
-      
-      // 檢查是否需要顯示通知
-      final prefs = await SharedPreferences.getInstance();
-      final showNotifications = prefs.getBool('show_gps_notifications') ?? false;
-      if (showNotifications) {
-        await showGPSRecordNotification(
-          latitude: latitude,
-          longitude: longitude,
-          timestamp: DateTime.now().toIso8601String(),
-        );
-      }
-    } catch (e) {
-      debugPrint('[BackgroundGPS] ❌ 處理前台服務位置更新失敗: $e');
-    }
-  }
-
   /// 停止背景GPS追蹤
   static Future<bool> stopBackgroundTracking() async {
     try {
       // 停止通勤時段檢查定時器
       stopCommuteTimeCheck();
       
-      // 取消背景任務
-      await Workmanager().cancelByUniqueName(_taskName);
-      
       // 停止增強版前台服務
       await EnhancedForegroundLocationService.stopService();
-      
-      // 停止舊版前台服務
-      if (_useForegroundService) {
-        await ForegroundLocationService.stopService();
-        _locationSubscription?.cancel();
-        _locationSubscription = null;
-        _useForegroundService = false;
-      }
-      
-      // 停止計時器
-      _highFrequencyTimer?.cancel();
-      _highFrequencyTimer = null;
-      _currentUserId = null;
       
       // 更新本地存儲
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('background_gps_enabled', false);
-      
-      // 取消所有通知
-      await _notifications?.cancel(1);
-      await _notifications?.cancel(2);
       
       debugPrint('[BackgroundGPS] ✅ 背景GPS追蹤已停止');
       return true;
