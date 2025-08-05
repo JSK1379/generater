@@ -243,9 +243,9 @@ class GPSService {
       // 初始化背景服務
       await BackgroundGPSService.initialize();
       
-      // 開始背景追蹤
+      // 開始背景追蹤（轉換分鐘為秒）
       final success = await BackgroundGPSService.startBackgroundTracking(
-        intervalMinutes: intervalMinutes,
+        intervalSeconds: intervalMinutes * 60,
         userId: userId,
       );
       

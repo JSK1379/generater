@@ -68,6 +68,12 @@
             android:name=".LocationForegroundService"
             android:foregroundServiceType="location"
             android:exported="false" />
+            
+        <!-- 增強版前台定位服務（類似Google Maps） -->
+        <service
+            android:name=".EnhancedLocationForegroundService"
+            android:foregroundServiceType="location"
+            android:exported="false" />
 
     </application>
 

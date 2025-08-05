@@ -7,6 +7,7 @@ import 'chat_service_singleton.dart';
 import 'user_api_service.dart';
 import 'dart:async';
 import 'api_config.dart';
+import 'high_frequency_gps_test_page.dart';
 
 // 使用統一的API配置
 final String kTestWsServerUrl = ApiConfig.wsUrl;
@@ -437,6 +438,16 @@ class _TestTabState extends State<TestTab> {
     }
   }
 
+  /// 打開高頻率GPS測試頁面
+  void _openHighFrequencyGPSTest(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const HighFrequencyGPSTestPage(),
+      ),
+    );
+  }
+
   // _saveChatRoomHistory 方法已移除，因為沒有被使用
 
   Future<Map<String, String>?> _showEmailPasswordDialog(BuildContext context) async {
@@ -599,6 +610,15 @@ class _TestTabState extends State<TestTab> {
                 foregroundColor: Colors.white,
               ),
               child: const Text('查看今日GPS記錄'),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () => _openHighFrequencyGPSTest(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purple,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('🛰️ 高頻率背景GPS測試'),
             ),
           ],
         ),

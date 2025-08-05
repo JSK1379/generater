@@ -105,32 +105,40 @@ class LocationForegroundService : Service() {
         )
         
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("GPS追蹤運行中")
-            .setContentText("每${intervalSeconds}秒記錄一次位置")
+            .setContentTitle("🛰️ GPS追蹤運行中 (備用服務)")
+            .setContentText("高頻率背景定位 - 每${intervalSeconds}秒記錄位置")
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setSilent(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
     }
     
     private fun startLocationUpdates() {
+        // 強化定位請求配置，支援高頻率背景追蹤
         val locationRequest = LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY,
             (intervalSeconds * 1000).toLong()
         ).apply {
-            setMinUpdateDistanceMeters(0f)
+            setMinUpdateDistanceMeters(0f) // 即使沒移動也更新
             setMaxUpdateDelayMillis((intervalSeconds * 1000).toLong())
+            setMinUpdateIntervalMillis((intervalSeconds * 1000).toLong())
+            setGranularity(Granularity.GRANULARITY_FINE) // 高精度定位
+            setWaitForAccurateLocation(false) // 不等待高精度，立即返回
         }.build()
         
         try {
+            android.util.Log.d("LocationService", "開始定位更新，間隔: ${intervalSeconds}秒")
             fusedLocationClient.requestLocationUpdates(
                 locationRequest,
                 locationCallback,
                 Looper.getMainLooper()
             )
         } catch (securityException: SecurityException) {
-            // 權限不足時停止服務
+            android.util.Log.e("LocationService", "定位權限不足，停止服務")
             stopSelf()
         }
     }
@@ -236,17 +244,19 @@ class LocationForegroundService : Service() {
     private fun updateNotification(location: Location) {
         try {
             val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("GPS追蹤運行中")
-                .setContentText("最新位置: ${String.format("%.6f", location.latitude)}, ${String.format("%.6f", location.longitude)}")
+                .setContentTitle("🛰️ GPS追蹤運行中 (備用服務)")
+                .setContentText("位置: ${String.format("%.6f", location.latitude)}, ${String.format("%.6f", location.longitude)} | 精度: ${String.format("%.1f", location.accuracy)}m")
                 .setSmallIcon(android.R.drawable.ic_menu_mylocation)
                 .setOngoing(true)
                 .setSilent(true)
+                .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
                 .build()
                 
             val notificationManager = NotificationManagerCompat.from(this)
             try {
                 notificationManager.notify(NOTIFICATION_ID, notification)
-                android.util.Log.d("LocationService", "通知已更新")
+                android.util.Log.d("LocationService", "通知已更新 - 精度: ${location.accuracy}m")
             } catch (securityException: SecurityException) {
                 android.util.Log.w("LocationService", "更新通知失敗：缺少通知權限")
             }
