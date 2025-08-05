@@ -19,11 +19,20 @@ class MainActivity: FlutterActivity() {
         
         // 靜態方法供前台服務調用
         fun sendLocationToFlutter(latitude: Double, longitude: Double) {
-            methodChannel?.invokeMethod("onLocationUpdate", mapOf(
-                "latitude" to latitude,
-                "longitude" to longitude,
-                "timestamp" to System.currentTimeMillis()
-            ))
+            try {
+                methodChannel?.let { channel ->
+                    channel.invokeMethod("onLocationUpdate", mapOf(
+                        "latitude" to latitude,
+                        "longitude" to longitude,
+                        "timestamp" to System.currentTimeMillis()
+                    ))
+                    android.util.Log.d("MainActivity", "位置數據已發送到 Flutter: $latitude, $longitude")
+                } ?: run {
+                    android.util.Log.w("MainActivity", "MethodChannel 為 null，無法發送位置數據")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "發送位置數據到 Flutter 失敗: ${e.message}", e)
+            }
         }
     }
     

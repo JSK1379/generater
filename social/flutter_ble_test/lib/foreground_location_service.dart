@@ -23,20 +23,24 @@ class ForegroundLocationService {
   
   /// 處理來自原生的方法調用
   static Future<void> _handleMethodCall(MethodCall call) async {
-    switch (call.method) {
-      case 'onLocationUpdate':
-        final arguments = call.arguments as Map<dynamic, dynamic>;
-        final locationData = {
-          'latitude': arguments['latitude'] as double,
-          'longitude': arguments['longitude'] as double,
-          'timestamp': arguments['timestamp'] as int,
-        };
-        
-        _locationController?.add(locationData);
-        debugPrint('[ForegroundLocationService] 收到位置更新: ${locationData['latitude']}, ${locationData['longitude']}');
-        break;
-      default:
-        debugPrint('[ForegroundLocationService] 未知方法: ${call.method}');
+    try {
+      switch (call.method) {
+        case 'onLocationUpdate':
+          final arguments = call.arguments as Map<dynamic, dynamic>;
+          final locationData = {
+            'latitude': arguments['latitude'] as double,
+            'longitude': arguments['longitude'] as double,
+            'timestamp': arguments['timestamp'] as int,
+          };
+          
+          _locationController?.add(locationData);
+          debugPrint('[ForegroundLocationService] ✅ 收到位置更新: ${locationData['latitude']}, ${locationData['longitude']}');
+          break;
+        default:
+          debugPrint('[ForegroundLocationService] ⚠️ 未知方法: ${call.method}');
+      }
+    } catch (e) {
+      debugPrint('[ForegroundLocationService] ❌ 處理方法調用失敗: $e');
     }
   }
   

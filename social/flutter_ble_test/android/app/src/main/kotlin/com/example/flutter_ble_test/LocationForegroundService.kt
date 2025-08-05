@@ -43,7 +43,7 @@ class LocationForegroundService : Service() {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
     private var serviceJob = SupervisorJob()
-    private var serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
+    private var serviceScope = CoroutineScope(Dispatchers.Main + serviceJob)
     private var intervalSeconds = 30
     
     override fun onCreate() {
@@ -141,83 +141,117 @@ class LocationForegroundService : Service() {
     }
     
     private fun onLocationReceived(location: Location) {
-        serviceScope.launch {
+        try {
+            android.util.Log.d("LocationService", "收到位置更新: ${location.latitude}, ${location.longitude}")
+            
+            // 直接在主線程發送位置給 Flutter
             try {
-                // 發送位置給 Flutter
                 sendLocationToFlutter(location.latitude, location.longitude)
-                
-                // 同時直接上傳到服務器
-                uploadLocationToServer(location.latitude, location.longitude)
-                
-                // 更新通知顯示最新位置時間
+            } catch (e: Exception) {
+                android.util.Log.w("LocationService", "發送位置給 Flutter 失敗: ${e.message}")
+            }
+            
+            // 直接在主線程更新通知
+            try {
                 updateNotification(location)
             } catch (e: Exception) {
-                android.util.Log.e("LocationService", "處理位置更新失敗", e)
+                android.util.Log.w("LocationService", "更新通知失敗: ${e.message}")
             }
+            
+            // 使用 Thread 上傳到服務器 (避免協程)
+            Thread {
+                try {
+                    uploadLocationToServerSync(location.latitude, location.longitude)
+                } catch (e: Exception) {
+                    android.util.Log.w("LocationService", "上傳位置到服務器失敗: ${e.message}")
+                }
+            }.start()
+            
+            android.util.Log.d("LocationService", "位置處理完成")
+        } catch (e: Exception) {
+            android.util.Log.e("LocationService", "處理位置更新失敗: ${e.message}", e)
         }
     }
     
-    private suspend fun uploadLocationToServer(latitude: Double, longitude: Double) {
-        withContext(Dispatchers.IO) {
-            try {
-                val userId = getUserId() ?: return@withContext
-                
-                val url = java.net.URL("https://near-ride-backend-api.onrender.com/gps/location?user_id=$userId")
-                val connection = url.openConnection() as java.net.HttpURLConnection
-                
-                connection.apply {
-                    requestMethod = "POST"
-                    setRequestProperty("Content-Type", "application/json")
-                    doOutput = true
-                }
-                
-                val jsonBody = org.json.JSONObject().apply {
-                    put("lat", latitude)
-                    put("lng", longitude)
-                    put("ts", System.currentTimeMillis())
-                }
-                
-                connection.outputStream.use { outputStream ->
-                    outputStream.write(jsonBody.toString().toByteArray())
-                }
-                
-                val responseCode = connection.responseCode
-                connection.disconnect()
-                
-                android.util.Log.d("LocationService", "位置上傳結果: $responseCode for $latitude, $longitude")
-            } catch (e: Exception) {
-                android.util.Log.e("LocationService", "位置上傳失敗: ${e.message}", e)
+    private fun uploadLocationToServerSync(latitude: Double, longitude: Double) {
+        try {
+            val userId = getUserId() ?: return
+            
+            val url = java.net.URL("https://near-ride-backend-api.onrender.com/gps/location?user_id=$userId")
+            val connection = url.openConnection() as java.net.HttpURLConnection
+            
+            connection.apply {
+                requestMethod = "POST"
+                setRequestProperty("Content-Type", "application/json")
+                doOutput = true
             }
+            
+            val jsonBody = org.json.JSONObject().apply {
+                put("lat", latitude)
+                put("lng", longitude)
+                put("ts", System.currentTimeMillis())
+            }
+            
+            connection.outputStream.use { outputStream ->
+                outputStream.write(jsonBody.toString().toByteArray())
+            }
+            
+            val responseCode = connection.responseCode
+            connection.disconnect()
+            
+            android.util.Log.d("LocationService", "位置上傳結果: $responseCode for $latitude, $longitude")
+        } catch (e: Exception) {
+            android.util.Log.e("LocationService", "位置上傳失敗: ${e.message}", e)
         }
     }
     
     private fun getUserId(): String? {
-        val sharedPref = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-        return sharedPref.getString("flutter.background_gps_user_id", null)
+        return try {
+            val sharedPref = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val userId = sharedPref.getString("flutter.background_gps_user_id", null)
+            if (userId.isNullOrEmpty()) {
+                android.util.Log.w("LocationService", "用戶 ID 為空")
+            } else {
+                android.util.Log.d("LocationService", "獲取到用戶 ID: $userId")
+            }
+            userId
+        } catch (e: Exception) {
+            android.util.Log.e("LocationService", "獲取用戶 ID 失敗: ${e.message}", e)
+            null
+        }
     }
     
     private fun sendLocationToFlutter(latitude: Double, longitude: Double) {
-        // 通過 MainActivity 發送位置給 Flutter
-        MainActivity.sendLocationToFlutter(latitude, longitude)
-        
-        // 同時記錄日誌
-        android.util.Log.d("LocationService", "位置更新: $latitude, $longitude")
+        try {
+            // 通過 MainActivity 發送位置給 Flutter
+            MainActivity.sendLocationToFlutter(latitude, longitude)
+            
+            // 記錄成功日誌
+            android.util.Log.d("LocationService", "位置已發送到 Flutter: $latitude, $longitude")
+        } catch (e: Exception) {
+            android.util.Log.e("LocationService", "發送位置到 Flutter 失敗: ${e.message}", e)
+        }
     }
     
     private fun updateNotification(location: Location) {
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("GPS追蹤運行中")
-            .setContentText("最新位置: ${String.format("%.6f", location.latitude)}, ${String.format("%.6f", location.longitude)}")
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-            .setOngoing(true)
-            .setSilent(true)
-            .build()
-            
-        val notificationManager = NotificationManagerCompat.from(this)
         try {
-            notificationManager.notify(NOTIFICATION_ID, notification)
-        } catch (securityException: SecurityException) {
-            // 忽略通知權限問題
+            val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("GPS追蹤運行中")
+                .setContentText("最新位置: ${String.format("%.6f", location.latitude)}, ${String.format("%.6f", location.longitude)}")
+                .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+                .setOngoing(true)
+                .setSilent(true)
+                .build()
+                
+            val notificationManager = NotificationManagerCompat.from(this)
+            try {
+                notificationManager.notify(NOTIFICATION_ID, notification)
+                android.util.Log.d("LocationService", "通知已更新")
+            } catch (securityException: SecurityException) {
+                android.util.Log.w("LocationService", "更新通知失敗：缺少通知權限")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("LocationService", "創建通知失敗: ${e.message}", e)
         }
     }
     

@@ -93,7 +93,7 @@ class BackgroundGPSService {
   }) async {
     try {
       // 檢查定位權限
-      if (!await GPSService.checkAndRequestLocationPermission()) {
+      if (!await GPSService.checkAndRequestBackgroundLocationPermission()) {
         debugPrint('[BackgroundGPS] 定位權限被拒絕，無法開始高頻率追蹤');
         return false;
       }
@@ -239,8 +239,8 @@ class BackgroundGPSService {
 
     await _notifications?.show(
       2,
-      'GPS高頻率追蹤運行中',
-      '每$intervalSeconds秒記錄一次位置',
+      'GPS高頻率追蹤運行中 (Timer模式)',
+      '每$intervalSeconds秒記錄一次位置 - 需保持前台',
       details,
     );
   }
@@ -285,35 +285,18 @@ class BackgroundGPSService {
   }) async {
     try {
       // 檢查定位權限
-      if (!await GPSService.checkAndRequestLocationPermission()) {
+      if (!await GPSService.checkAndRequestBackgroundLocationPermission()) {
         debugPrint('[BackgroundGPS] 定位權限被拒絕，無法開始背景追蹤');
         return false;
       }
-      
-      // 請求背景定位權限
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission != LocationPermission.always) {
-        permission = await Geolocator.requestPermission();
-        if (permission != LocationPermission.always) {
-          debugPrint('[BackgroundGPS] 背景定位權限被拒絕');
-          // 仍然可以在前台運行，所以不返回false
-        }
-      }
-      
-      // 對於小於15分鐘的間隔，使用高頻率追蹤模式
+
+      // 確保間隔不小於15分鐘（WorkManager限制）
       if (intervalMinutes < 15) {
-        debugPrint('[BackgroundGPS] ⚠️ 間隔$intervalMinutes分鐘小於WorkManager最小限制，切換至高頻率模式');
-        
-        // 停止現有的 WorkManager 任務
-        await Workmanager().cancelByUniqueName(_taskName);
-        
-        return await startHighFrequencyTracking(
-          intervalSeconds: intervalMinutes * 60,
-          userId: userId,
-        );
+        debugPrint('[BackgroundGPS] ⚠️ 間隔$intervalMinutes分鐘小於WorkManager最小限制，調整為15分鐘');
+        intervalMinutes = 15;
       }
       
-      // 如果切換到長間隔模式，停止高頻率追蹤
+      // 停止任何現有的高頻率追蹤
       await stopHighFrequencyTracking();
       
       // 保存用戶ID到本地存儲
@@ -337,6 +320,14 @@ class BackgroundGPSService {
         backoffPolicy: BackoffPolicy.exponential,
         backoffPolicyDelay: const Duration(minutes: 1),
       );
+      
+      // 立即記錄一次GPS位置（啟動時）
+      try {
+        debugPrint('[BackgroundGPS] 📍 啟動時立即記錄GPS位置...');
+        await _recordGPSLocation(userId);
+      } catch (e) {
+        debugPrint('[BackgroundGPS] ⚠️ 啟動時GPS記錄失敗: $e');
+      }
       
       // 顯示持續通知
       await _showPersistentNotification();
@@ -563,5 +554,32 @@ Future<Map<String, dynamic>> _recordLocationInBackground(String userId) async {
       'success': false,
       'error': e.toString(),
     };
+  }
+}
+
+/// 立即記錄GPS位置（用於啟動時）
+static Future<void> _recordGPSLocation(String userId) async {
+  try {
+    // 使用 GPSService 的 recordCurrentLocation 方法
+    final result = await GPSService.recordCurrentLocation(userId);
+    
+    if (result.success) {
+      debugPrint('[BackgroundGPS] ✅ 啟動時GPS記錄成功: ${result.latitude}, ${result.longitude}');
+      
+      // 可選：顯示記錄成功通知
+      final prefs = await SharedPreferences.getInstance();
+      final showNotifications = prefs.getBool('show_gps_notifications') ?? false;
+      if (showNotifications) {
+        await BackgroundGPSService.showGPSRecordNotification(
+          latitude: result.latitude!,
+          longitude: result.longitude!,
+          timestamp: result.timestamp!.toIso8601String(),
+        );
+      }
+    } else {
+      debugPrint('[BackgroundGPS] ❌ 啟動時GPS記錄失敗: ${result.error}');
+    }
+  } catch (e) {
+    debugPrint('[BackgroundGPS] ❌ 啟動時GPS記錄異常: $e');
   }
 }

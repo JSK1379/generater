@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_config.dart';
@@ -19,6 +20,70 @@ class GPSService {
       }
     }
     return true;
+  }
+
+  /// 檢查並請求背景定位權限
+  /// 這個方法會先確保前台定位權限，然後請求背景定位權限
+  static Future<bool> checkAndRequestBackgroundLocationPermission() async {
+    try {
+      // 首先檢查並請求基本定位權限
+      if (!await checkAndRequestLocationPermission()) {
+        debugPrint('[GPSService] 基本定位權限被拒絕');
+        return false;
+      }
+
+      // 使用 permission_handler 檢查權限狀態
+      final locationPermission = await Permission.location.status;
+      final backgroundLocationPermission = await Permission.locationAlways.status;
+      
+      debugPrint('[GPSService] 位置權限狀態: $locationPermission');
+      debugPrint('[GPSService] 背景位置權限狀態: $backgroundLocationPermission');
+
+      // 如果已經有背景位置權限，直接返回成功
+      if (backgroundLocationPermission.isGranted) {
+        debugPrint('[GPSService] ✅ 已有背景定位權限');
+        return true;
+      }
+
+      // 確保前台位置權限已授權
+      if (!locationPermission.isGranted) {
+        debugPrint('[GPSService] 🔄 請求前台位置權限...');
+        final result = await Permission.location.request();
+        if (!result.isGranted) {
+          debugPrint('[GPSService] ❌ 前台位置權限被拒絕');
+          return false;
+        }
+      }
+
+      // 請求背景位置權限
+      debugPrint('[GPSService] 🔄 請求背景定位權限...');
+      final backgroundResult = await Permission.locationAlways.request();
+      
+      if (backgroundResult.isGranted) {
+        debugPrint('[GPSService] ✅ 背景定位權限授權成功');
+        return true;
+      } else if (backgroundResult.isDenied) {
+        debugPrint('[GPSService] ⚠️ 背景定位權限被拒絕，但前台權限可用');
+        return true; // 仍然可以在前台使用
+      } else if (backgroundResult.isPermanentlyDenied) {
+        debugPrint('[GPSService] ❌ 背景定位權限被永久拒絕');
+        // 引導用戶到設定頁面
+        await _showPermissionDialog();
+        return false;
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('[GPSService] ❌ 權限請求異常: $e');
+      return false;
+    }
+  }
+
+  /// 顯示權限設定對話框
+  static Future<void> _showPermissionDialog() async {
+    debugPrint('[GPSService] 💡 引導用戶到設定頁面設定權限');
+    // 可以選擇開啟應用設定頁面
+    await openAppSettings();
   }
 
   /// 記錄當前GPS位置

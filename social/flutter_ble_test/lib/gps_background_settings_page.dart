@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'gps_service.dart';
 
 /// GPS背景追蹤設定頁面
@@ -19,9 +20,9 @@ class _GPSBackgroundSettingsPageState extends State<GPSBackgroundSettingsPage> {
   String? _lastUpdateTime;
   bool _showNotifications = false;
 
-  // 間隔選項（以秒為單位）
-  final List<int> _intervalOptionsSeconds = [30, 60, 300, 600, 900, 1800, 3600]; // 30秒, 1分, 5分, 10分, 15分, 30分, 60分
-  final List<String> _intervalLabels = ['30 秒', '1 分鐘', '5 分鐘', '10 分鐘', '15 分鐘', '30 分鐘', '60 分鐘'];
+  // 間隔選項（僅節能模式，≥15分鐘）
+  final List<int> _intervalOptionsSeconds = [900, 1800, 3600, 5400, 7200]; // 15分, 30分, 60分, 90分, 120分
+  final List<String> _intervalLabels = ['15 分鐘', '30 分鐘', '60 分鐘', '90 分鐘', '120 分鐘'];
 
   @override
   void initState() {
@@ -37,34 +38,26 @@ class _GPSBackgroundSettingsPageState extends State<GPSBackgroundSettingsPage> {
       
       final status = await GPSService.getBackgroundTrackingStatus();
       
+      // 確定實際的間隔秒數
+      int actualIntervalSeconds;
+      if (status.intervalMinutes == 1) {
+        // 檢查 SharedPreferences 中是否有高頻設定
+        final intervalSeconds = prefs.getInt('background_gps_interval_seconds');
+        actualIntervalSeconds = intervalSeconds ?? 60; // 預設1分鐘
+      } else {
+        actualIntervalSeconds = status.intervalMinutes * 60; // 轉換為秒
+      }
+      
       setState(() {
         _isBackgroundTrackingEnabled = status.isEnabled;
         _trackingInterval = status.intervalMinutes;
-        // 如果間隔是1分鐘，檢查是否實際設定為30秒
-        if (status.intervalMinutes == 1) {
-          // 檢查 SharedPreferences 中是否有高頻設定
-          final prefs = SharedPreferences.getInstance();
-          prefs.then((prefs) {
-            final intervalSeconds = prefs.getInt('background_gps_interval_seconds');
-            if (intervalSeconds != null && intervalSeconds == 30) {
-              setState(() {
-                _selectedIntervalSeconds = 30;
-              });
-            } else {
-              setState(() {
-                _selectedIntervalSeconds = 60; // 1分鐘
-              });
-            }
-          });
-        } else {
-          _selectedIntervalSeconds = status.intervalMinutes * 60; // 轉換為秒
-        }
+        _selectedIntervalSeconds = actualIntervalSeconds;
         _lastUpdateTime = status.lastUpdateTime;
         _showNotifications = prefs.getBool('show_gps_notifications') ?? false;
         _isLoading = false;
       });
       
-      debugPrint('[GPSSettings] 載入設定完成: $status');
+      debugPrint('[GPSSettings] 載入設定完成: $status, 實際間隔: $actualIntervalSeconds秒');
     } catch (e) {
       debugPrint('[GPSSettings] 載入設定失敗: $e');
       setState(() {
@@ -117,17 +110,18 @@ class _GPSBackgroundSettingsPageState extends State<GPSBackgroundSettingsPage> {
     });
   }
 
-  /// 更新追蹤間隔
+  /// 更新追蹤間隔（僅節能模式）
   Future<void> _updateTrackingInterval(int intervalSeconds) async {
     setState(() {
       _isLoading = true;
     });
 
     try {
-      // 將秒轉換為分鐘（最小1分鐘）
+      // 將秒轉換為分鐘（最小15分鐘）
       final intervalMinutes = (intervalSeconds / 60).ceil();
       
       if (_isBackgroundTrackingEnabled) {
+        // 使用節能模式重新啟動
         final success = await GPSService.updateBackgroundTrackingInterval(intervalMinutes);
         final label = _getIntervalLabel(intervalSeconds);
         if (success) {
@@ -141,6 +135,8 @@ class _GPSBackgroundSettingsPageState extends State<GPSBackgroundSettingsPage> {
         _trackingInterval = intervalMinutes; // 保存為分鐘單位
         _selectedIntervalSeconds = intervalSeconds; // 保存實際選擇的秒數
       });
+      
+      debugPrint('[GPSSettings] 追蹤間隔已更新: $intervalSeconds秒 ($intervalMinutes分鐘)');
     } catch (e) {
       _showError('更新間隔失敗: $e');
     }
@@ -164,6 +160,107 @@ class _GPSBackgroundSettingsPageState extends State<GPSBackgroundSettingsPage> {
     setState(() {
       _showNotifications = enabled;
     });
+  }
+
+  /// 檢查並請求權限
+  Future<void> _checkAndRequestPermissions() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // 檢查前台位置權限
+      final locationPermission = await Permission.location.status;
+      final backgroundLocationPermission = await Permission.locationAlways.status;
+      final notificationPermission = await Permission.notification.status;
+      
+      debugPrint('[GPSSettings] 權限狀態檢查:');
+      debugPrint('[GPSSettings] 位置權限: $locationPermission');
+      debugPrint('[GPSSettings] 背景位置權限: $backgroundLocationPermission');
+      debugPrint('[GPSSettings] 通知權限: $notificationPermission');
+
+      // 構建權限狀態報告
+      final locationStatus = _getPermissionStatusText(locationPermission);
+      final backgroundStatus = _getPermissionStatusText(backgroundLocationPermission);
+      final notificationStatus = _getPermissionStatusText(notificationPermission);
+
+      // 嘗試請求背景定位權限
+      final hasBackgroundPermission = await GPSService.checkAndRequestBackgroundLocationPermission();
+      
+      // 顯示詳細的權限狀態
+      final message = '權限檢查完成！\n\n'
+          '📍 位置權限: $locationStatus\n'
+          '🔄 背景位置權限: $backgroundStatus\n'
+          '🔔 通知權限: $notificationStatus\n\n'
+          '${hasBackgroundPermission ? 
+            '✅ 您現在可以啟用背景GPS追蹤' : 
+            '⚠️ 建議手動到設定中授權「始終允許」位置權限'}';
+      
+      if (hasBackgroundPermission) {
+        _showSuccess(message);
+      } else {
+        _showError('$message\n\n💡 點擊「開啟應用設定」按鈕前往設定頁面');
+        
+        // 提供開啟設定的選項
+        _showOpenSettingsDialog();
+      }
+    } catch (e) {
+      _showError('權限檢查失敗: $e');
+    }
+
+    setState(() {
+      _isLoading = false;
+    });
+  }
+
+  /// 獲取權限狀態文字
+  String _getPermissionStatusText(PermissionStatus status) {
+    switch (status) {
+      case PermissionStatus.granted:
+        return '✅ 已授權';
+      case PermissionStatus.denied:
+        return '❌ 被拒絕';
+      case PermissionStatus.restricted:
+        return '🚫 受限制';
+      case PermissionStatus.permanentlyDenied:
+        return '⛔ 永久拒絕';
+      case PermissionStatus.limited:
+        return '⚠️ 有限授權';
+      default:
+        return '❓ 未知狀態';
+    }
+  }
+
+  /// 顯示開啟設定對話框
+  Future<void> _showOpenSettingsDialog() async {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('需要權限設定'),
+          content: const Text(
+            '為了讓應用能在背景追蹤GPS位置，請到系統設定中：\n\n'
+            '1. 找到此應用的權限設定\n'
+            '2. 點擊「位置」權限\n'
+            '3. 選擇「始終允許」\n\n'
+            '是否要前往設定頁面？'
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await openAppSettings();
+              },
+              child: const Text('開啟設定'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   /// 手動記錄一次GPS位置
@@ -279,6 +376,50 @@ class _GPSBackgroundSettingsPageState extends State<GPSBackgroundSettingsPage> {
                   
                   const SizedBox(height: 16),
                   
+                  // 權限檢查卡片
+                  Card(
+                    color: Colors.orange[50],
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '🔐 權限檢查',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            '背景GPS追蹤需要以下權限：\n'
+                            '• 定位權限（使用應用時）\n'
+                            '• 背景定位權限（始終允許）← 重要！\n'
+                            '• 通知權限\n\n'
+                            '⚠️ Android 10+ 系統需要分步驟授權：\n'
+                            '1. 先授權「使用應用時」位置權限\n'
+                            '2. 再授權「始終允許」背景權限\n'
+                            '3. 如果系統未顯示對話框，需手動到設定授權',
+                            style: TextStyle(fontSize: 14),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: _checkAndRequestPermissions,
+                              icon: const Icon(Icons.security),
+                              label: const Text('檢查並請求權限'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange[600],
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
                   // 背景追蹤開關
                   Card(
                     child: Padding(
@@ -346,18 +487,18 @@ class _GPSBackgroundSettingsPageState extends State<GPSBackgroundSettingsPage> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '📱 1-14分鐘間隔使用高頻模式，需要應用保持在背景運行',
+                                '� 使用節能模式，應用可在關閉時背景運行',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: Colors.blue[600],
+                                  color: Colors.green[600],
                                 ),
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '🔋 15分鐘以上間隔使用節能模式，可在應用關閉時運行',
+                                '� 適合路線記錄，不需要持續開啟應用',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: Colors.green[600],
+                                  color: Colors.blue[600],
                                 ),
                               ),
                             ],
@@ -434,10 +575,18 @@ class _GPSBackgroundSettingsPageState extends State<GPSBackgroundSettingsPage> {
                             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                           ),
                           SizedBox(height: 8),
-                          Text('• 背景GPS追蹤需要定位權限'),
-                          Text('• 為了節省電量，建議設定較長的追蹤間隔'),
-                          Text('• 應用被系統清理後需要重新啟動追蹤'),
+                          Text('• 使用節能模式，應用可完全關閉並在背景運行'),
+                          Text('• Android 10+ 需要「始終允許」位置權限'),
+                          Text('• 最小追蹤間隔為15分鐘（系統限制）'),
+                          Text('• 適合路線記錄，無需持續開啟應用'),
                           Text('• 在省電模式下可能會影響追蹤準確性'),
+                          SizedBox(height: 8),
+                          Text(
+                            '🔧 權限設定提示：',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          Text('• 如果權限請求失敗，請到「設定 > 應用程式 > [應用名稱] > 權限」手動設定'),
+                          Text('• 選擇「位置」權限 > 「始終允許」'),
                         ],
                       ),
                     ),
