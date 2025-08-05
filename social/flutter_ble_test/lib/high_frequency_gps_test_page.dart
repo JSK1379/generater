@@ -15,6 +15,7 @@ class HighFrequencyGPSTestPage extends StatefulWidget {
 
 class _HighFrequencyGPSTestPageState extends State<HighFrequencyGPSTestPage> {
   bool _isTracking = false;
+  bool _isLoading = false; // 添加載入狀態
   String _userId = '';
   int _selectedInterval = 30; // 默認30秒
   String _statusMessage = '準備開始高頻率背景GPS追蹤';
@@ -43,18 +44,46 @@ class _HighFrequencyGPSTestPageState extends State<HighFrequencyGPSTestPage> {
   /// 載入設定
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    
+    // 檢查 widget 是否仍然存在於 widget tree 中
+    if (!mounted) return;
+    
     setState(() {
-      _userId = prefs.getString('background_gps_user_id') ?? 'user_${DateTime.now().millisecondsSinceEpoch}';
+      // 使用系統的主要用戶ID，而不是背景GPS專用ID
+      _userId = prefs.getString('user_id') ?? 'user_${DateTime.now().millisecondsSinceEpoch}';
       final savedInterval = prefs.getInt('background_gps_interval_seconds') ?? 30;
       // 確保載入的間隔值在可選項目中，否則使用默認值
       _selectedInterval = _intervalOptions.contains(savedInterval) ? savedInterval : 30;
     });
   }
   
+  /// 保存間隔設定
+  Future<void> _saveIntervalSetting(int intervalSeconds) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('background_gps_interval_seconds', intervalSeconds);
+      
+      // 顯示保存成功的提示
+      if (mounted) {
+        _showSnackBar('✅ 間隔設定已保存：${_formatInterval(intervalSeconds)}', Colors.blue);
+      }
+      
+      debugPrint('[HighFrequencyGPS] 間隔設定已保存: $intervalSeconds秒');
+    } catch (e) {
+      debugPrint('[HighFrequencyGPS] 保存間隔設定失敗: $e');
+      if (mounted) {
+        _showSnackBar('❌ 保存設定失敗', Colors.red);
+      }
+    }
+  }
+  
   /// 檢查追蹤狀態
   Future<void> _checkTrackingStatus() async {
     final isTracking = await BackgroundGPSService.isBackgroundTrackingEnabled();
     final isEnhancedRunning = await EnhancedForegroundLocationService.isServiceRunning();
+    
+    // 檢查 widget 是否仍然存在於 widget tree 中
+    if (!mounted) return;
     
     setState(() {
       _isTracking = isTracking || isEnhancedRunning;
@@ -69,6 +98,9 @@ class _HighFrequencyGPSTestPageState extends State<HighFrequencyGPSTestPage> {
   /// 監聽統計數據
   void _listenToStats() {
     _statsSubscription = EnhancedForegroundLocationService.statsStream.listen((stats) {
+      // 檢查 widget 是否仍然存在於 widget tree 中
+      if (!mounted) return;
+      
       setState(() {
         _stats = stats;
         
@@ -95,7 +127,11 @@ class _HighFrequencyGPSTestPageState extends State<HighFrequencyGPSTestPage> {
   
   /// 開始高頻率背景追蹤
   Future<void> _startTracking() async {
+    // 檢查 widget 是否仍然存在於 widget tree 中
+    if (!mounted) return;
+    
     setState(() {
+      _isLoading = true;
       _statusMessage = '正在啟動高頻率背景GPS追蹤...';
     });
     
@@ -104,37 +140,51 @@ class _HighFrequencyGPSTestPageState extends State<HighFrequencyGPSTestPage> {
       userId: _userId,
     );
     
-    if (success) {
-      setState(() {
+    // 檢查 widget 是否仍然存在於 widget tree 中
+    if (!mounted) return;
+    
+    setState(() {
+      _isLoading = false;
+      if (success) {
         _isTracking = true;
         _statusMessage = '高頻率背景GPS追蹤已啟動';
-      });
-      
+      } else {
+        _statusMessage = '啟動失敗，請檢查權限設定';
+      }
+    });
+    
+    if (success) {
       _showSnackBar('✅ 背景GPS追蹤已啟動！現在可以關閉APP進行測試。', Colors.green);
     } else {
-      setState(() {
-        _statusMessage = '啟動失敗，請檢查權限設定';
-      });
-      
       _showSnackBar('❌ 啟動失敗，請檢查定位權限', Colors.red);
     }
   }
   
   /// 停止背景追蹤
   Future<void> _stopTracking() async {
+    // 檢查 widget 是否仍然存在於 widget tree 中
+    if (!mounted) return;
+    
     setState(() {
+      _isLoading = true;
       _statusMessage = '正在停止背景GPS追蹤...';
     });
     
     final success = await BackgroundGPSService.stopBackgroundTracking();
     
-    if (success) {
-      setState(() {
+    // 檢查 widget 是否仍然存在於 widget tree 中
+    if (!mounted) return;
+    
+    setState(() {
+      _isLoading = false;
+      if (success) {
         _isTracking = false;
         _statusMessage = '背景GPS追蹤已停止';
         _stats.clear();
-      });
-      
+      }
+    });
+    
+    if (success) {
       _showSnackBar('✅ 背景GPS追蹤已停止', Colors.orange);
     } else {
       _showSnackBar('❌ 停止失敗', Colors.red);
@@ -144,6 +194,10 @@ class _HighFrequencyGPSTestPageState extends State<HighFrequencyGPSTestPage> {
   /// 獲取服務統計
   Future<void> _refreshStats() async {
     final stats = await EnhancedForegroundLocationService.getServiceStats();
+    
+    // 檢查 widget 是否仍然存在於 widget tree 中
+    if (!mounted) return;
+    
     setState(() {
       _stats = stats;
     });
@@ -151,6 +205,9 @@ class _HighFrequencyGPSTestPageState extends State<HighFrequencyGPSTestPage> {
   
   /// 顯示提示訊息
   void _showSnackBar(String message, Color color) {
+    // 檢查 widget 是否仍然存在於 widget tree 中
+    if (!mounted) return;
+    
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -243,20 +300,43 @@ class _HighFrequencyGPSTestPageState extends State<HighFrequencyGPSTestPage> {
                     ),
                     const SizedBox(height: 16),
                     
-                    // 用戶ID
-                    TextFormField(
-                      initialValue: _userId,
-                      decoration: const InputDecoration(
-                        labelText: '用戶ID',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.person),
+                    // 用戶ID (只讀顯示)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(4),
+                        color: Colors.grey.shade50,
                       ),
-                      onChanged: (value) {
-                        setState(() {
-                          _userId = value;
-                        });
-                      },
-                      enabled: !_isTracking,
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person, color: Colors.grey),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  '用戶ID',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _userId.isNotEmpty ? _userId : '載入中...',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     
                     const SizedBox(height: 16),
@@ -277,11 +357,14 @@ class _HighFrequencyGPSTestPageState extends State<HighFrequencyGPSTestPage> {
                                 child: Text(_formatInterval(interval)),
                               );
                             }).toList(),
-                            onChanged: _isTracking ? null : (value) {
+                            onChanged: (_isTracking || _isLoading) ? null : (value) async {
                               if (value != null) {
                                 setState(() {
                                   _selectedInterval = value;
                                 });
+                                
+                                // 保存間隔設定到SharedPreferences
+                                await _saveIntervalSetting(value);
                               }
                             },
                             isExpanded: true,
@@ -300,11 +383,26 @@ class _HighFrequencyGPSTestPageState extends State<HighFrequencyGPSTestPage> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: _isTracking ? _stopTracking : _startTracking,
-                icon: Icon(_isTracking ? Icons.stop : Icons.play_arrow),
-                label: Text(_isTracking ? '停止背景追蹤' : '開始背景追蹤'),
+                onPressed: _isLoading ? null : (_isTracking ? _stopTracking : _startTracking),
+                icon: _isLoading 
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : Icon(_isTracking ? Icons.stop : Icons.play_arrow),
+                label: Text(
+                  _isLoading 
+                    ? (_isTracking ? '正在停止...' : '正在啟動...')
+                    : (_isTracking ? '停止背景追蹤' : '開始背景追蹤')
+                ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _isTracking ? Colors.red : Colors.green,
+                  backgroundColor: _isLoading 
+                    ? Colors.grey 
+                    : (_isTracking ? Colors.red : Colors.green),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),

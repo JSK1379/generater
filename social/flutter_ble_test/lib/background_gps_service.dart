@@ -100,6 +100,7 @@ class BackgroundGPSService {
   static Future<bool> startBackgroundTracking({
     int intervalSeconds = 30,
     required String userId,
+    Map<String, dynamic>? commuteTimeSettings,
   }) async {
     try {
       // 檢查定位權限
@@ -116,6 +117,12 @@ class BackgroundGPSService {
       await prefs.setString('background_gps_user_id', userId);
       await prefs.setInt('background_gps_interval_seconds', intervalSeconds);
       await prefs.setBool('background_gps_enabled', true);
+      
+      // 保存通勤時段設定
+      if (commuteTimeSettings != null) {
+        await prefs.setString('commute_time_settings', jsonEncode(commuteTimeSettings));
+      }
+      
       _currentUserId = userId;
       
       // 優先使用增強版前台服務（真正的背景運行）
@@ -172,6 +179,10 @@ class BackgroundGPSService {
       
       debugPrint('[BackgroundGPS] ✅ 真正的背景GPS追蹤已開始，間隔: $intervalSeconds秒');
       debugPrint('[BackgroundGPS] 🔋 服務可在關閉APP後繼續運行');
+      
+      // 啟動通勤時段檢查定時器（每分鐘檢查一次）
+      startCommuteTimeCheck();
+      
       return true;
       
     } catch (e) {
@@ -302,6 +313,55 @@ class BackgroundGPSService {
   /// 立即記錄GPS位置（用於啟動時）
   static Future<void> _recordGPSLocation(String userId) async {
     try {
+      // 檢查是否在通勤時段內
+      final prefs = await SharedPreferences.getInstance();
+      final settingsJson = prefs.getString('commute_time_settings');
+      
+      if (settingsJson != null) {
+        // 如果有設定通勤時段，則檢查當前是否在時段內
+        try {
+          final settings = jsonDecode(settingsJson) as Map<String, dynamic>;
+          final now = TimeOfDay.now();
+          bool inCommuteTime = false;
+          
+          // 檢查上班時段
+          if (settings['morningStart'] != null && settings['morningEnd'] != null) {
+            final morningStart = settings['morningStart'] as Map<String, dynamic>;
+            final morningEnd = settings['morningEnd'] as Map<String, dynamic>;
+            
+            final startMinutes = morningStart['hour'] * 60 + morningStart['minute'];
+            final endMinutes = morningEnd['hour'] * 60 + morningEnd['minute'];
+            final currentMinutes = now.hour * 60 + now.minute;
+            
+            if (currentMinutes >= startMinutes && currentMinutes <= endMinutes) {
+              inCommuteTime = true;
+            }
+          }
+          
+          // 檢查下班時段
+          if (!inCommuteTime && settings['eveningStart'] != null && settings['eveningEnd'] != null) {
+            final eveningStart = settings['eveningStart'] as Map<String, dynamic>;
+            final eveningEnd = settings['eveningEnd'] as Map<String, dynamic>;
+            
+            final startMinutes = eveningStart['hour'] * 60 + eveningStart['minute'];
+            final endMinutes = eveningEnd['hour'] * 60 + eveningEnd['minute'];
+            final currentMinutes = now.hour * 60 + now.minute;
+            
+            if (currentMinutes >= startMinutes && currentMinutes <= endMinutes) {
+              inCommuteTime = true;
+            }
+          }
+          
+          if (!inCommuteTime) {
+            debugPrint('[BackgroundGPS] 不在通勤時段內，跳過GPS記錄');
+            return;
+          }
+        } catch (e) {
+          debugPrint('[BackgroundGPS] 檢查通勤時段時發生錯誤: $e');
+          // 發生錯誤時，繼續執行GPS記錄
+        }
+      }
+      
       // 使用 GPSService 的 recordCurrentLocation 方法
       final result = await GPSService.recordCurrentLocation(userId);
       
@@ -406,6 +466,9 @@ class BackgroundGPSService {
   /// 停止背景GPS追蹤
   static Future<bool> stopBackgroundTracking() async {
     try {
+      // 停止通勤時段檢查定時器
+      stopCommuteTimeCheck();
+      
       // 取消背景任務
       await Workmanager().cancelByUniqueName(_taskName);
       
@@ -591,11 +654,75 @@ Future<Map<String, dynamic>> _recordLocationInBackground(String userId) async {
         'error': 'HTTP ${response.statusCode}: ${response.body}',
       };
     }
-    
   } catch (e) {
     return {
       'success': false,
       'error': e.toString(),
     };
   }
+}
+
+/// 通勤時段檢查的全域定時器
+Timer? _globalCommuteCheckTimer;
+
+/// 啟動通勤時段檢查（全域函數）
+void startCommuteTimeCheck() {
+  stopCommuteTimeCheck(); // 先停止現有的定時器
+  
+  _globalCommuteCheckTimer = Timer.periodic(const Duration(minutes: 1), (timer) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final settingsJson = prefs.getString('commute_time_settings');
+      
+      if (settingsJson != null) {
+        final settings = jsonDecode(settingsJson) as Map<String, dynamic>;
+        final now = TimeOfDay.now();
+        bool inCommuteTime = false;
+        
+        // 檢查上班時段
+        if (settings['morningStart'] != null && settings['morningEnd'] != null) {
+          final morningStart = settings['morningStart'] as Map<String, dynamic>;
+          final morningEnd = settings['morningEnd'] as Map<String, dynamic>;
+          
+          final startMinutes = morningStart['hour'] * 60 + morningStart['minute'];
+          final endMinutes = morningEnd['hour'] * 60 + morningEnd['minute'];
+          final currentMinutes = now.hour * 60 + now.minute;
+          
+          if (currentMinutes >= startMinutes && currentMinutes <= endMinutes) {
+            inCommuteTime = true;
+          }
+        }
+        
+        // 檢查下班時段
+        if (!inCommuteTime && settings['eveningStart'] != null && settings['eveningEnd'] != null) {
+          final eveningStart = settings['eveningStart'] as Map<String, dynamic>;
+          final eveningEnd = settings['eveningEnd'] as Map<String, dynamic>;
+          
+          final startMinutes = eveningStart['hour'] * 60 + eveningStart['minute'];
+          final endMinutes = eveningEnd['hour'] * 60 + eveningEnd['minute'];
+          final currentMinutes = now.hour * 60 + now.minute;
+          
+          if (currentMinutes >= startMinutes && currentMinutes <= endMinutes) {
+            inCommuteTime = true;
+          }
+        }
+        
+        // 如果不在通勤時段內，則停止GPS追蹤
+        if (!inCommuteTime) {
+          debugPrint('[BackgroundGPS] ⏰ 已超出通勤時段，自動停止GPS追蹤');
+          await BackgroundGPSService.stopBackgroundTracking();
+        }
+      }
+    } catch (e) {
+      debugPrint('[BackgroundGPS] ❌ 通勤時段檢查失敗: $e');
+    }
+  });
+  
+  debugPrint('[BackgroundGPS] ⏰ 通勤時段檢查已啟動（每分鐘檢查一次）');
+}
+
+/// 停止通勤時段檢查（全域函數）
+void stopCommuteTimeCheck() {
+  _globalCommuteCheckTimer?.cancel();
+  _globalCommuteCheckTimer = null;
 }

@@ -267,9 +267,15 @@ class EnhancedLocationForegroundService : Service() {
         // 更新通知
         updateNotification(location)
         
-        // 異步上傳位置
-        serviceScope.launch {
-            uploadLocationToServer(location)
+        // 檢查通勤時段再決定是否上傳
+        if (isInCommuteTime()) {
+            Log.d(TAG, "✅ 在通勤時段內，上傳位置")
+            // 異步上傳位置
+            serviceScope.launch {
+                uploadLocationToServer(location)
+            }
+        } else {
+            Log.d(TAG, "⏰ 不在通勤時段內，跳過位置上傳")
         }
         
         // 重新獲取 WakeLock（延長持有時間）
@@ -410,6 +416,64 @@ class EnhancedLocationForegroundService : Service() {
             this,
             Manifest.permission.ACCESS_COARSE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
+    }
+    
+    /**
+     * 檢查當前時間是否在通勤時段內
+     */
+    private fun isInCommuteTime(): Boolean {
+        try {
+            val sharedPreferences = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            val now = Calendar.getInstance()
+            val currentHour = now.get(Calendar.HOUR_OF_DAY)
+            val currentMinute = now.get(Calendar.MINUTE)
+            val currentTimeInMinutes = currentHour * 60 + currentMinute
+            
+            // 讀取早上通勤時段
+            val morningStart = sharedPreferences.getString("flutter.commute_start_morning", null)
+            val morningEnd = sharedPreferences.getString("flutter.commute_end_morning", null)
+            
+            if (morningStart != null && morningEnd != null) {
+                val morningStartParts = morningStart.split(":")
+                val morningEndParts = morningEnd.split(":")
+                
+                if (morningStartParts.size == 2 && morningEndParts.size == 2) {
+                    val morningStartMinutes = morningStartParts[0].toInt() * 60 + morningStartParts[1].toInt()
+                    val morningEndMinutes = morningEndParts[0].toInt() * 60 + morningEndParts[1].toInt()
+                    
+                    if (currentTimeInMinutes >= morningStartMinutes && currentTimeInMinutes <= morningEndMinutes) {
+                        Log.d(TAG, "✅ 在早上通勤時段內 ($morningStart - $morningEnd)")
+                        return true
+                    }
+                }
+            }
+            
+            // 讀取晚上通勤時段
+            val eveningStart = sharedPreferences.getString("flutter.commute_start_evening", null)
+            val eveningEnd = sharedPreferences.getString("flutter.commute_end_evening", null)
+            
+            if (eveningStart != null && eveningEnd != null) {
+                val eveningStartParts = eveningStart.split(":")
+                val eveningEndParts = eveningEnd.split(":")
+                
+                if (eveningStartParts.size == 2 && eveningEndParts.size == 2) {
+                    val eveningStartMinutes = eveningStartParts[0].toInt() * 60 + eveningStartParts[1].toInt()
+                    val eveningEndMinutes = eveningEndParts[0].toInt() * 60 + eveningEndParts[1].toInt()
+                    
+                    if (currentTimeInMinutes >= eveningStartMinutes && currentTimeInMinutes <= eveningEndMinutes) {
+                        Log.d(TAG, "✅ 在晚上通勤時段內 ($eveningStart - $eveningEnd)")
+                        return true
+                    }
+                }
+            }
+            
+            Log.d(TAG, "⏰ 不在任何通勤時段內")
+            return false
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ 檢查通勤時段失敗", e)
+            return true // 發生錯誤時默認允許記錄
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

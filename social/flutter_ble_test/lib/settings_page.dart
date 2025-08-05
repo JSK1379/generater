@@ -12,7 +12,8 @@ import 'main_tab_page.dart';
 import 'settings_ble_helper.dart';
 import 'user_profile_edit_page.dart';
 import 'api_config.dart';
-import 'gps_background_settings_page.dart';
+import 'high_frequency_gps_test_page.dart';
+import 'background_gps_service.dart';
 
 class SettingsPage extends StatefulWidget {
   final bool isAdvertising;
@@ -100,6 +101,12 @@ class _SettingsPageState extends State<SettingsPage> {
       (now.hour < _commuteEndEvening!.hour || (now.hour == _commuteEndEvening!.hour && now.minute <= _commuteEndEvening!.minute));
     return inMorning || inEvening;
   }
+  
+  /// 檢查是否已設定通勤時段
+  bool _hasCommuteTimeSettings() {
+    return (_commuteStartMorning != null && _commuteEndMorning != null) ||
+           (_commuteStartEvening != null && _commuteEndEvening != null);
+  }
 
   @override
   void initState() {
@@ -115,6 +122,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _autoCommuteTimer = Timer.periodic(const Duration(minutes: 1), (_) => _autoCheckCommutePeriod());
     _loadUserId();
     _loadCommuteSettings(); // 🔄 載入通勤時段設定
+    _checkHighFrequencyGPSStatus(); // 檢查高頻率GPS狀態
   }
 
   @override
@@ -340,12 +348,143 @@ class _SettingsPageState extends State<SettingsPage> {
     if (!_autoTracking) uploadCommuteRoute();
   }
 
-  void _toggleCommuteTracking(bool value) {
-    if (_autoTracking) return;
-    if (value) {
-      _startCommuteTracking();
+  /// 檢查高頻率GPS追蹤狀態
+  Future<void> _checkHighFrequencyGPSStatus() async {
+    final isEnabled = await BackgroundGPSService.isBackgroundTrackingEnabled();
+    if (mounted) {
+      setState(() {
+        _isTrackingCommute = isEnabled;
+      });
+    }
+  }
+  
+  /// 格式化間隔顯示
+  String _formatInterval(int seconds) {
+    if (seconds < 60) {
+      return '$seconds秒';
+    } else if (seconds < 3600) {
+      return '${(seconds / 60).round()}分鐘';
     } else {
-      _stopCommuteTracking();
+      return '${(seconds / 3600).round()}小時';
+    }
+  }
+
+  /// 獲取當前GPS間隔設定
+  Future<String> _getCurrentGPSInterval() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final intervalSeconds = prefs.getInt('background_gps_interval_seconds') ?? 30;
+      return _formatInterval(intervalSeconds);
+    } catch (e) {
+      debugPrint('[Settings] 讀取GPS間隔設定時發生錯誤: $e');
+      return '30秒 (預設)';
+    }
+  }
+
+  void _toggleCommuteTracking(bool value) async {
+    if (_autoTracking) return;
+    
+    if (value) {
+      // 檢查是否已設定通勤時段
+      if (!_hasCommuteTimeSettings()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⚠️ 請先設定通勤時段，才能啟動自動記錄功能'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }
+      
+      // 檢查是否在通勤時段內
+      if (!_isNowInCommutePeriod()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('📍 目前不在設定的通勤時段內，GPS追蹤將在通勤時段自動啟動'),
+              backgroundColor: Colors.blue,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+        // 仍然允許啟動，但會顯示提示
+      }
+      
+      // 啟動高頻率背景GPS追蹤
+      final commuteSettings = {
+        'morningStart': _commuteStartMorning != null ? {
+          'hour': _commuteStartMorning!.hour,
+          'minute': _commuteStartMorning!.minute,
+        } : null,
+        'morningEnd': _commuteEndMorning != null ? {
+          'hour': _commuteEndMorning!.hour,
+          'minute': _commuteEndMorning!.minute,
+        } : null,
+        'eveningStart': _commuteStartEvening != null ? {
+          'hour': _commuteStartEvening!.hour,
+          'minute': _commuteStartEvening!.minute,
+        } : null,
+        'eveningEnd': _commuteEndEvening != null ? {
+          'hour': _commuteEndEvening!.hour,
+          'minute': _commuteEndEvening!.minute,
+        } : null,
+      };
+      
+      // 從SharedPreferences讀取保存的間隔設定
+      final prefs = await SharedPreferences.getInstance();
+      final savedInterval = prefs.getInt('background_gps_interval_seconds') ?? 30;
+      
+      final success = await BackgroundGPSService.startBackgroundTracking(
+        intervalSeconds: savedInterval, // 使用保存的間隔設定
+        userId: _userId ?? 'user_${DateTime.now().millisecondsSinceEpoch}',
+        commuteTimeSettings: commuteSettings,
+      );
+      
+      if (success) {
+        setState(() {
+          _isTrackingCommute = true;
+        });
+        if (mounted) {
+          final statusMessage = _isNowInCommutePeriod() 
+            ? '✅ 高頻率背景GPS追蹤已啟動（通勤時段內）- 間隔: ${_formatInterval(savedInterval)}'
+            : '✅ 高頻率背景GPS追蹤已啟動（將在通勤時段內記錄）- 間隔: ${_formatInterval(savedInterval)}';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(statusMessage),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ 啟動失敗，請檢查權限設定'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } else {
+      // 停止高頻率背景GPS追蹤
+      final success = await BackgroundGPSService.stopBackgroundTracking();
+      
+      if (success) {
+        setState(() {
+          _isTrackingCommute = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ 背景GPS追蹤已停止'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -691,6 +830,11 @@ class _SettingsPageState extends State<SettingsPage> {
                         padding: EdgeInsets.only(top: 4.0),
                         child: Text('已自動啟動，將於通勤時段結束自動上傳', style: TextStyle(fontSize: 12, color: Colors.blue)),
                       ),
+                    if (_isTrackingCommute && !_autoTracking)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4.0),
+                        child: Text('高頻率背景GPS追蹤運行中', style: TextStyle(fontSize: 12, color: Colors.green)),
+                      ),
                     const SizedBox(height: 24),
                     
                     // GPS定位功能區塊
@@ -724,7 +868,33 @@ class _SettingsPageState extends State<SettingsPage> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    // 背景GPS追蹤設定按鈕
+                    // GPS間隔設定顯示
+                    FutureBuilder<String>(
+                      future: _getCurrentGPSInterval(),
+                      builder: (context, snapshot) {
+                        return Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey[300]!),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.timer, size: 20, color: Colors.blue),
+                              const SizedBox(width: 8),
+                              Text(
+                                'GPS記錄間隔: ${snapshot.data ?? "載入中..."}',
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    // 高頻率背景GPS測試按鈕
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
@@ -732,7 +902,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const GPSBackgroundSettingsPage(),
+                              builder: (context) => const HighFrequencyGPSTestPage(),
                             ),
                           );
                         },
@@ -740,8 +910,8 @@ class _SettingsPageState extends State<SettingsPage> {
                           backgroundColor: Colors.purple,
                           foregroundColor: Colors.white,
                         ),
-                        icon: const Icon(Icons.settings_backup_restore),
-                        label: const Text('背景GPS追蹤設定'),
+                        icon: const Icon(Icons.gps_fixed),
+                        label: const Text('🛰️ 高頻率背景GPS測試'),
                       ),
                     ),
                     const SizedBox(height: 24),
