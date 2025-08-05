@@ -1,16 +1,20 @@
 import 'dart:async';
+// import 'dart:io'; // 臨時註釋：圖片上傳功能暫時禁用
 import 'package:flutter/material.dart';
 import 'websocket_service.dart';
 import 'chat_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'user_api_service.dart';
+// import 'image_api_service.dart'; // 臨時註釋：圖片上傳功能暫時禁用
 import 'api_config.dart';
 
 class ChatService extends ChangeNotifier {
   final WebSocketService _webSocketService = WebSocketService();
   // 創建 UserApiService 實例，使用統一的API配置
   final UserApiService _userApiService = UserApiService(ApiConfig.baseUrl);
+  // 創建 ImageApiService 實例，用於圖片上傳
+  // final ImageApiService _imageApiService = ImageApiService(); // 臨時註釋：圖片上傳功能暫時禁用
   WebSocketService get webSocketService => _webSocketService;
   // 按房間 ID 分離的訊息存儲
   final Map<String, List<ChatMessage>> _roomMessages = <String, List<ChatMessage>>{};
@@ -755,6 +759,48 @@ class ChatService extends ChangeNotifier {
     
     debugPrint('ChatService: 發送聊天訊息到伺服器 - $message');
     _webSocketService.sendMessage(message);
+  }
+  
+  /// 發送圖片消息
+  /// 使用 HTTP 上傳圖片，然後通過 WebSocket 發送包含圖片 URL 的消息
+  Future<bool> sendImageMessage(String roomId, String sender, String imagePath) async {
+    try {
+      debugPrint('ChatService: 開始上傳圖片 - $imagePath');
+      
+      // 🚧 臨時禁用圖片上傳功能
+      // 原因：後端服務器尚未實現 /images/upload 端點
+      debugPrint('ChatService: 圖片上傳功能暫時不可用 - 後端服務器尚未實現圖片上傳端點');
+      return false;
+      
+      /* 
+      // 原始圖片上傳邏輯（暫時註釋）
+      // 1. 使用 HTTP 上傳圖片
+      final imageFile = File(imagePath);
+      if (!await imageFile.exists()) {
+        debugPrint('ChatService: 圖片文件不存在 - $imagePath');
+        return false;
+      }
+      
+      // 2. 調用 ImageApiService 上傳圖片
+      final imageId = await _imageApiService.uploadImage(imageFile);
+      if (imageId.isEmpty) {
+        debugPrint('ChatService: 圖片上傳失敗，返回空的 imageId');
+        return false;
+      }
+      
+      // 3. 生成圖片 URL
+      final imageUrl = _imageApiService.getImageUrl(imageId);
+      debugPrint('ChatService: 圖片上傳成功，imageId: $imageId, imageUrl: $imageUrl');
+      
+      // 4. 通過 WebSocket 發送包含圖片 URL 的消息
+      sendTextMessage(roomId, sender, '', imageUrl: imageUrl);
+      
+      return true;
+      */
+    } catch (e) {
+      debugPrint('ChatService: 發送圖片消息失敗 - $e');
+      return false;
+    }
   }
   
   // 儲存聊天室訊息到本地

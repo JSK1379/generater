@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'chat_service.dart';
 import 'chat_models.dart';
 import 'chat_room_open_manager.dart'; // 導入全局管理器
@@ -37,6 +38,11 @@ class _ChatPageState extends State<ChatPage> {
   List<ChatMessage> _cachedMessages = []; // 緩存訊息列表
   String _previousInputText = ''; // 追蹤之前的輸入文字
   bool _hasTriggeredInputScroll = false; // 防止同一次輸入多次滾動
+  
+  // AI輔助聊天相關變數（用於未來擴展）
+  // bool _isAIAssistantOpen = false; // 是否正在使用AI輔助
+  // String? _selectedMessageType; // 選擇的訊息類型
+  List<String> _aiSuggestions = []; // AI生成的建議選項
 
   @override
   void initState() {
@@ -65,9 +71,8 @@ class _ChatPageState extends State<ChatPage> {
         // 監聽訊息變化，智能自動捲動
         widget.chatService.addListener(_onMessagesChanged);
         
-        // 初始化訊息數量
-        _previousMessageCount = widget.chatService.messages.length;
-        _cachedMessages = List.from(widget.chatService.messages);
+        // 初始化訊息數量和緩存
+        _updateMessagesCache();
         
         // 如果有訊息，初始捲動到底部
         if (widget.chatService.messages.isNotEmpty) {
@@ -78,6 +83,25 @@ class _ChatPageState extends State<ChatPage> {
           });
         }
       }
+    });
+  }
+  
+  // 更新訊息緩存
+  void _updateMessagesCache() {
+    final currentMessages = widget.chatService.messages;
+    debugPrint('[ChatPage] 更新訊息緩存，訊息數量: ${currentMessages.length}');
+    debugPrint('[ChatPage] 當前用戶: ${widget.currentUser}');
+    debugPrint('[ChatPage] 房間ID: ${widget.roomId}');
+    
+    // 打印每條訊息的詳細信息
+    for (int i = 0; i < currentMessages.length; i++) {
+      final msg = currentMessages[i];
+      debugPrint('[ChatPage] 訊息 $i: sender=${msg.sender}, content=${msg.content}, isMe=${msg.sender == widget.currentUser}');
+    }
+    
+    setState(() {
+      _cachedMessages = List.from(currentMessages);
+      _previousMessageCount = currentMessages.length;
     });
   }
 
@@ -91,7 +115,10 @@ class _ChatPageState extends State<ChatPage> {
     if (!mounted) return;
     
     if (success) {
-      // 連線成功，不需要在這裡調用 joinRoom
+      // 連線成功，刷新訊息顯示
+      debugPrint('[ChatPage] WebSocket 連線成功，刷新訊息顯示');
+      _updateMessagesCache();
+      
       // ChatService 會在處理 connect_response 時自動加入房間
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -158,13 +185,15 @@ class _ChatPageState extends State<ChatPage> {
   
   // 智能自動捲動：只在用戶在底部且有新訊息時才自動捲動
   void _onMessagesChanged() {
-    if (!mounted || !_scrollController.hasClients) return;
+    if (!mounted) return;
     
     final currentMessages = widget.chatService.messages;
     final currentMessageCount = currentMessages.length;
     
-    // 檢查是否有新訊息，並且訊息數量確實有變化
-    if (currentMessageCount > _previousMessageCount && currentMessageCount > 0) {
+    debugPrint('[ChatPage] _onMessagesChanged 被調用，當前訊息數: $currentMessageCount，之前訊息數: $_previousMessageCount');
+    
+    // 如果訊息數量有變化，或者緩存為空，則更新UI
+    if (currentMessageCount != _previousMessageCount || _cachedMessages.isEmpty) {
       debugPrint('[ChatPage] 訊息數量變化: $_previousMessageCount -> $currentMessageCount');
       
       // 更新緩存的訊息列表
@@ -173,7 +202,7 @@ class _ChatPageState extends State<ChatPage> {
       });
       
       // 只有當用戶在底部時才自動捲動
-      if (_isUserAtBottom) {
+      if (_isUserAtBottom && currentMessageCount > _previousMessageCount) {
         // 使用 WidgetsBinding 確保在下一幀執行，避免在構建過程中調用
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
@@ -257,6 +286,498 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  Future<void> _selectAndUploadImage() async {
+    try {
+      // 檢查 WebSocket 連線狀態
+      if (!widget.chatService.isConnected) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('無法上傳圖片：未連線到伺服器'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      final ImagePicker picker = ImagePicker();
+      
+      // 顯示選擇來源的對話框
+      final ImageSource? source = await showModalBottomSheet<ImageSource>(
+        context: context,
+        builder: (BuildContext context) {
+          return SafeArea(
+            child: Wrap(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.photo_library),
+                  title: const Text('從相簿選擇'),
+                  onTap: () => Navigator.of(context).pop(ImageSource.gallery),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_camera),
+                  title: const Text('拍攝照片'),
+                  onTap: () => Navigator.of(context).pop(ImageSource.camera),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.cancel),
+                  title: const Text('取消'),
+                  onTap: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+
+      if (source == null) return;
+
+      // 選擇圖片
+      final XFile? image = await picker.pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 80,
+      );
+
+      if (image == null) return;
+
+      // 顯示上傳進度
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 12),
+                Text('正在上傳圖片...'),
+              ],
+            ),
+            duration: Duration(minutes: 1), // 設置較長時間，實際會被手動dismiss
+          ),
+        );
+      }
+
+      // 上傳圖片並發送訊息
+      final success = await widget.chatService.sendImageMessage(
+        widget.roomId,
+        widget.currentUser,
+        image.path,
+      );
+
+      // 隱藏進度提示
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      }
+
+      if (success) {
+        // 上傳成功，自動捲動到底部
+        setState(() {
+          _isUserAtBottom = true;
+          _showScrollToBottomButton = false;
+        });
+        
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _scrollToBottom();
+          }
+        });
+      } else {
+        // 上傳失敗
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('圖片上傳功能暫時不可用\n後端服務器尚未實現此功能'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('選擇或上傳圖片時發生錯誤: $e');
+      
+      // 隱藏進度提示
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('圖片上傳功能暫時不可用\n後端服務器尚未實現此功能'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
+  // AI輔助聊天功能
+  Future<void> _showAIAssistantDialog() async {
+    // 第一階段：選擇訊息類型
+    final messageType = await _showMessageTypeSelection();
+    if (messageType == null) return;
+    
+    // 第二階段：顯示AI建議選項
+    await _showAISuggestions(messageType);
+  }
+  
+  // 顯示訊息類型選擇對話框
+  Future<String?> _showMessageTypeSelection() async {
+    return await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.8,
+            child: Column(
+              children: [
+                // 固定頭部內容
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 標題
+                      Row(
+                        children: [
+                          const Icon(Icons.smart_toy, color: Colors.purple, size: 28),
+                          const SizedBox(width: 12),
+                          const Text(
+                            'AI輔助聊天',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        '請選擇您想要傳送的訊息類型：',
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                // 可滾動的訊息類型選項
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Column(
+                      children: _buildMessageTypeOptions(),
+                    ),
+                  ),
+                ),
+                
+                // 底部間距
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+  
+  // 建立訊息類型選項
+  List<Widget> _buildMessageTypeOptions() {
+    final messageTypes = [
+      {'type': '問候', 'icon': Icons.waving_hand, 'description': '打招呼、問好'},
+      {'type': '感謝', 'icon': Icons.favorite, 'description': '表達感謝、感激'},
+      {'type': '邀請', 'icon': Icons.event_available, 'description': '邀請活動、聚會'},
+      {'type': '詢問', 'icon': Icons.help_outline, 'description': '提出問題、詢問'},
+      {'type': '道歉', 'icon': Icons.sentiment_very_dissatisfied, 'description': '表達歉意、道歉'},
+      {'type': '關心', 'icon': Icons.health_and_safety, 'description': '關心對方、問候近況'},
+      {'type': '分享', 'icon': Icons.share, 'description': '分享心情、經驗'},
+      {'type': '鼓勵', 'icon': Icons.emoji_emotions, 'description': '給予鼓勵、支持'},
+    ];
+    
+    return messageTypes.map((typeData) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => Navigator.of(context).pop(typeData['type'] as String),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade300, width: 1),
+                borderRadius: BorderRadius.circular(12),
+                color: Colors.transparent,
+              ),
+              child: Row(
+                children: [
+                  // 圖標
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.purple.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      typeData['icon'] as IconData,
+                      color: Colors.purple,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  // 文字內容
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          typeData['type'] as String,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          typeData['description'] as String,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // 箭頭圖標
+                  Icon(
+                    Icons.chevron_right,
+                    color: Colors.grey.shade400,
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }).toList();
+  }
+  
+  // 顯示AI建議選項
+  Future<void> _showAISuggestions(String messageType) async {
+    // 模擬AI生成建議（實際應該調用AI API）
+    final suggestions = _generateMockAISuggestions(messageType);
+    
+    setState(() {
+      _aiSuggestions = suggestions;
+    });
+    
+    if (!mounted) return;
+    
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return SizedBox(
+          height: MediaQuery.of(context).size.height * 0.7,
+          child: Column(
+            children: [
+              // 固定頭部內容
+              Container(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 標題
+                    Row(
+                      children: [
+                        const Icon(Icons.lightbulb, color: Colors.amber, size: 28),
+                        const SizedBox(width: 12),
+                        Text(
+                          'AI建議：$messageType',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            _resetAIAssistant();
+                          },
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      '選擇一個您喜歡的選項：',
+                      style: TextStyle(fontSize: 14, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+              
+              // 可滾動的AI建議選項
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  itemCount: suggestions.length,
+                  itemBuilder: (context, index) {
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: Card(
+                        elevation: 2,
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: Colors.purple.shade100,
+                            child: Text(
+                              '${index + 1}',
+                              style: TextStyle(
+                                color: Colors.purple.shade700,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          title: Text(
+                            suggestions[index],
+                            style: const TextStyle(fontSize: 15),
+                          ),
+                          onTap: () {
+                            Navigator.of(context).pop();
+                            _selectAISuggestion(suggestions[index]);
+                          },
+                          contentPadding: const EdgeInsets.all(12),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              
+              // 固定底部按鈕
+              Container(
+                padding: const EdgeInsets.all(20),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      _showAISuggestions(messageType); // 重新生成
+                    },
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('重新生成建議'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+  
+  // 模擬AI生成建議（實際應該調用AI API）
+  List<String> _generateMockAISuggestions(String messageType) {
+    final suggestionMap = {
+      '問候': [
+        '嗨！你好嗎？希望你今天過得愉快！',
+        '早安！今天是美好的一天，你有什麼計劃嗎？',
+        '哈囉～好久不見，最近怎麼樣？',
+        '你好！很高興又能和你聊天了～'
+      ],
+      '感謝': [
+        '真的非常感謝你的幫助，太感激了！',
+        '謝謝你總是在我需要的時候出現💕',
+        '感謝你的耐心和理解，你真的很棒！',
+        '謝謝你讓我的一天變得更美好～'
+      ],
+      '邀請': [
+        '這個週末要不要一起出去走走？',
+        '下次有時間的話，我們約個咖啡聊聊吧！',
+        '最近有個很棒的活動，要不要一起參加？',
+        '如果你有空的話，歡迎來我們的聚會！'
+      ],
+      '詢問': [
+        '請問你對這件事情有什麼看法嗎？',
+        '能不能請教你一個問題？',
+        '你覺得這樣做會比較好嗎？',
+        '想聽聽你的建議，你覺得呢？'
+      ],
+      '道歉': [
+        '真的很抱歉，是我考慮不周。',
+        '對不起讓你等這麼久，下次我會注意的。',
+        '很抱歉造成你的困擾，我會改進的。',
+        'Sorry，是我的錯，請原諒我。'
+      ],
+      '關心': [
+        '你最近還好嗎？有什麼需要幫忙的嗎？',
+        '天氣變冷了，記得多穿點衣服保暖喔！',
+        '工作不要太累，記得好好休息～',
+        '希望你一切都順利，有事隨時找我！'
+      ],
+      '分享': [
+        '今天發生了一件很有趣的事情想和你分享！',
+        '我剛看到一個很棒的東西，推薦給你～',
+        '分享一個好消息，希望你也會開心！',
+        '想和你聊聊最近的一些想法和感受。'
+      ],
+      '鼓勵': [
+        '你一定可以的！我相信你的能力！',
+        '加油！困難只是暫時的，你很棒！',
+        '不要放棄，你已經做得很好了！',
+        '相信自己，你比想像中還要厲害！'
+      ],
+    };
+    
+    return suggestionMap[messageType] ?? [
+      '這是一個很棒的想法！',
+      '我覺得你說得很有道理。',
+      '謝謝你的分享，很有意思！',
+      '希望我們能夠繼續保持聯繫。'
+    ];
+  }
+  
+  // 選擇AI建議並發送
+  void _selectAISuggestion(String suggestion) {
+    _messageController.text = suggestion;
+    _resetAIAssistant();
+    
+    // 自動聚焦到輸入框
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FocusScope.of(context).requestFocus(FocusNode());
+    });
+  }
+  
+  // 重置AI輔助狀態
+  void _resetAIAssistant() {
+    setState(() {
+      _aiSuggestions.clear();
+    });
+  }
+
   @override
   void dispose() {
     widget.chatService.removeListener(_onMessagesChanged);
@@ -305,21 +826,31 @@ class _ChatPageState extends State<ChatPage> {
                 children: [
               // 訊息列表
               Expanded(
-                child: _cachedMessages.isEmpty
-                    ? const Center(
+                child: Builder(
+                  builder: (context) {
+                    // 調試信息
+                    debugPrint('[ChatPage] 構建訊息列表，緩存訊息數: ${_cachedMessages.length}');
+                    
+                    if (_cachedMessages.isEmpty) {
+                      return const Center(
                         child: Text('目前沒有訊息，開始聊天吧！'),
-                      )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.all(8.0),
-                        itemCount: _cachedMessages.length,
-                        itemBuilder: (context, index) {
-                          final message = _cachedMessages[index];
-                          final isMe = message.sender == widget.currentUser;
-                          
-                          return _buildMessageBubble(message, isMe);
-                        },
-                      ),
+                      );
+                    }
+                    
+                    return ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.all(8.0),
+                      itemCount: _cachedMessages.length,
+                      itemBuilder: (context, index) {
+                        final message = _cachedMessages[index];
+                        final isMe = message.sender == widget.currentUser;
+                        
+                        debugPrint('[ChatPage] 構建訊息 $index: ${message.content}');
+                        return _buildMessageBubble(message, isMe);
+                      },
+                    );
+                  },
+                ),
               ),
             
             // 輸入框
@@ -344,6 +875,25 @@ class _ChatPageState extends State<ChatPage> {
                   
                   return Row(
                     children: [
+                      // AI輔助按鈕
+                      IconButton(
+                        onPressed: isConnected ? _showAIAssistantDialog : null,
+                        icon: const Icon(Icons.smart_toy),
+                        color: isConnected 
+                          ? Colors.purple 
+                          : Colors.grey,
+                        tooltip: 'AI輔助聊天',
+                      ),
+                      // 圖片上傳按鈕
+                      IconButton(
+                        onPressed: isConnected ? _selectAndUploadImage : null,
+                        icon: const Icon(Icons.image),
+                        color: isConnected 
+                          ? Colors.grey.shade400  // 使用較淡的顏色表示功能暫時不可用
+                          : Colors.grey,
+                        tooltip: '上傳圖片 (功能開發中)',
+                      ),
+                      const SizedBox(width: 4),
                       Expanded(
                         child: TextField(
                           controller: _messageController,
@@ -404,6 +954,8 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Widget _buildMessageBubble(ChatMessage message, bool isMe) {
+    debugPrint('[ChatPage] 構建訊息氣泡: sender=${message.sender}, currentUser=${widget.currentUser}, isMe=$isMe, content=${message.content}');
+    
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(

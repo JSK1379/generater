@@ -519,108 +519,112 @@ class _TestTabState extends State<TestTab> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('測試工具')),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: Colors.blue[50],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue[200]!),
-              ),
-              child: Text(
-                '當前用戶 ID: $_currentUserId',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('伺服器回傳：', style: TextStyle(fontWeight: FontWeight.bold)),
-                TextButton.icon(
-                  onPressed: _refreshLog,
-                  icon: const Icon(Icons.refresh, size: 16),
-                  label: const Text('刷新', style: TextStyle(fontSize: 12)),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue[200]!),
                 ),
-              ],
-            ),
-            Container(
-              padding: const EdgeInsets.all(8),
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(8),
+                child: Text(
+                  '當前用戶 ID: $_currentUserId',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  textAlign: TextAlign.center,
+                ),
               ),
-              child: Text(_wsLog, maxLines: 6, overflow: TextOverflow.ellipsis),
-            ),
-            Row(
-              children: [
-                const Text('目標 userId: '),
-                Expanded(
-                  child: TextField(
-                    controller: _targetUserIdController,
-                    decoration: const InputDecoration(hintText: '請輸入目標 userId'),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('伺服器回傳：', style: TextStyle(fontWeight: FontWeight.bold)),
+                  TextButton.icon(
+                    onPressed: _refreshLog,
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text('刷新', style: TextStyle(fontSize: 12)),
                   ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.all(8),
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: () => _sendConnectRequest(context),
-                  child: const Text('發送連接要求'),
+                child: Text(_wsLog, maxLines: 6, overflow: TextOverflow.ellipsis),
+              ),
+              Row(
+                children: [
+                  const Text('目標 userId: '),
+                  Expanded(
+                    child: TextField(
+                      controller: _targetUserIdController,
+                      decoration: const InputDecoration(hintText: '請輸入目標 userId'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () => _sendConnectRequest(context),
+                    child: const Text('發送連接要求'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: () => _createRoom(context),
+                child: const Text('創建聊天室（與 0000）'),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: () => _connectAndCreateRoom(context),
+                child: const Text('連接並創建聊天室'),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => _changeUserId(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: () => _createRoom(context),
-              child: const Text('創建聊天室（與 0000）'),
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: () => _connectAndCreateRoom(context),
-              child: const Text('連接並創建聊天室'),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () => _changeUserId(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
-                foregroundColor: Colors.white,
+                child: const Text('註冊新用戶'),
               ),
-              child: const Text('註冊新用戶'),
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: () => _uploadCurrentGPS(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: () => _uploadCurrentGPS(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('上傳當前GPS'),
               ),
-              child: const Text('上傳當前GPS'),
-            ),
-            const SizedBox(height: 8),
-            ElevatedButton(
-              onPressed: () => _getTodayGPSHistory(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
+              const SizedBox(height: 8),
+              ElevatedButton(
+                onPressed: () => _getTodayGPSHistory(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('查看今日GPS記錄'),
               ),
-              child: const Text('查看今日GPS記錄'),
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: () => _openHighFrequencyGPSTest(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.purple,
-                foregroundColor: Colors.white,
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: () => _openHighFrequencyGPSTest(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.purple,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('🛰️ 高頻率背景GPS測試'),
               ),
-              child: const Text('🛰️ 高頻率背景GPS測試'),
-            ),
-          ],
+              // 底部安全間距
+              SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
+            ],
+          ),
         ),
       ),
     );

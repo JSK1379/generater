@@ -36,7 +36,11 @@ class ApiConfig {
   static String get addFriend => '$_baseUrl/friends/add_friend';
   static String friendsList(String userId) => '$_baseUrl/friends/friends/$userId';
   
-  // 🔌 WebSocket 端點
+  // �️ 圖片相關端點
+  static String get imageUpload => '$_baseUrl/images/upload';
+  static String imageUrl(String imageId) => '$_baseUrl/images/$imageId';
+  
+  // �🔌 WebSocket 端點
   static String get wsUrl => '$_wsBaseUrl/ws';
   
   // 📋 常用的HTTP標頭

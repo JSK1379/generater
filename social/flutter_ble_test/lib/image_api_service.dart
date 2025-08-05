@@ -8,26 +8,45 @@ import 'api_config.dart';
 class ImageApiService {
   // 圖片上傳到 server，回傳圖片ID
   Future<String> uploadImage(File imageFile) async {
-    final uri = Uri.parse('${ApiConfig.baseUrl}/');
-    final request = http.MultipartRequest('POST', uri)
-      ..files.add(await http.MultipartFile.fromPath('file', imageFile.path));
-    final response = await request.send();
-    if (response.statusCode == 200) {
-      final respStr = await response.stream.bytesToString();
-      final data = jsonDecode(respStr);
-      // 假設 server 回傳 { "image_id": "xxx" }
-      final imageId = data['image_id'] ?? '';
-      debugPrint('[ImageApiService] 圖片上傳成功，image_id: $imageId');
-      return imageId;
-    } else {
-      debugPrint('[ImageApiService] 圖片上傳失敗: ${response.statusCode}');
-      throw Exception('圖片上傳失敗: ${response.statusCode}');
+    try {
+      final uri = Uri.parse(ApiConfig.imageUpload);
+      final request = http.MultipartRequest('POST', uri)
+        ..files.add(await http.MultipartFile.fromPath('file', imageFile.path));
+      
+      final response = await request.send();
+      
+      if (response.statusCode == 200) {
+        final respStr = await response.stream.bytesToString();
+        debugPrint('[ImageApiService] 圖片上傳成功，回應: $respStr');
+        
+        try {
+          final data = jsonDecode(respStr);
+          // 支援多種可能的回應格式，參考頭像上傳的成功經驗
+          final imageId = data['image_id'] ?? data['id'] ?? data['file_id'] ?? '';
+          
+          if (imageId.isNotEmpty) {
+            debugPrint('[ImageApiService] 獲得圖片 ID: $imageId');
+            return imageId;
+          } else {
+            debugPrint('[ImageApiService] 伺服器回應中沒有圖片 ID: $data');
+            throw Exception('伺服器回應中沒有圖片 ID');
+          }
+        } catch (e) {
+          debugPrint('[ImageApiService] 解析回應 JSON 失敗: $e，原始回應: $respStr');
+          throw Exception('解析回應失敗: $e');
+        }
+      } else {
+        debugPrint('[ImageApiService] 圖片上傳失敗: ${response.statusCode}');
+        throw Exception('圖片上傳失敗: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('[ImageApiService] 圖片上傳錯誤: $e');
+      rethrow;
     }
   }
 
-  // 由圖片ID取得圖片URL（這裡用假網址）
+  // 由圖片ID取得圖片URL
   String getImageUrl(String imageId) {
-    // 實際上應該根據 imageId 組合出正確的圖片網址
-    return 'https://example.com/images/$imageId.jpg';
+    return ApiConfig.imageUrl(imageId);
   }
 }
