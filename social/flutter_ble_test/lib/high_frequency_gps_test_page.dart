@@ -138,6 +138,7 @@ class _HighFrequencyGPSTestPageState extends State<HighFrequencyGPSTestPage> {
     final success = await BackgroundGPSService.startBackgroundTracking(
       intervalSeconds: _selectedInterval,
       userId: _userId,
+      skipCommuteTimeCheck: true, // 測試模式：跳過通勤時段檢查
     );
     
     // 檢查 widget 是否仍然存在於 widget tree 中

@@ -95,6 +95,7 @@ class BackgroundGPSService {
     int intervalSeconds = 30,
     required String userId,
     Map<String, dynamic>? commuteTimeSettings,
+    bool skipCommuteTimeCheck = false, // 新增參數：跳過通勤時段檢查
   }) async {
     try {
       // 檢查定位權限
@@ -111,9 +112,10 @@ class BackgroundGPSService {
       await prefs.setString('background_gps_user_id', userId);
       await prefs.setInt('background_gps_interval_seconds', intervalSeconds);
       await prefs.setBool('background_gps_enabled', true);
+      await prefs.setBool('skip_commute_time_check', skipCommuteTimeCheck); // 保存跳過通勤時段檢查的設定
       
-      // 保存通勤時段設定
-      if (commuteTimeSettings != null) {
+      // 保存通勤時段設定（如果不跳過檢查且有設定）
+      if (!skipCommuteTimeCheck && commuteTimeSettings != null) {
         await prefs.setString('commute_time_settings', jsonEncode(commuteTimeSettings));
       }
       
@@ -141,7 +143,7 @@ class BackgroundGPSService {
       // 立即記錄一次GPS位置（啟動時）
       try {
         debugPrint('[BackgroundGPS] 📍 啟動時立即記錄GPS位置...');
-        await _recordGPSLocation(userId);
+        await _recordGPSLocation(userId, skipCommuteTimeCheck);
       } catch (e) {
         debugPrint('[BackgroundGPS] ⚠️ 啟動時GPS記錄失敗: $e');
       }
@@ -149,8 +151,13 @@ class BackgroundGPSService {
       debugPrint('[BackgroundGPS] ✅ 真正的背景GPS追蹤已開始，間隔: $intervalSeconds秒');
       debugPrint('[BackgroundGPS] 🔋 服務可在關閉APP後繼續運行');
       
-      // 啟動通勤時段檢查定時器（每分鐘檢查一次）
-      startCommuteTimeCheck();
+      // 只在不跳過通勤時段檢查時才啟動通勤時段檢查定時器
+      if (!skipCommuteTimeCheck) {
+        startCommuteTimeCheck();
+        debugPrint('[BackgroundGPS] ⏰ 通勤時段檢查已啟動');
+      } else {
+        debugPrint('[BackgroundGPS] 🚫 跳過通勤時段檢查（測試模式）');
+      }
       
       return true;
       
@@ -161,8 +168,33 @@ class BackgroundGPSService {
   }
 
   /// 立即記錄GPS位置（用於啟動時）
-  static Future<void> _recordGPSLocation(String userId) async {
+  static Future<void> _recordGPSLocation(String userId, [bool skipCommuteTimeCheck = false]) async {
     try {
+      // 如果跳過通勤時段檢查，直接記錄GPS
+      if (skipCommuteTimeCheck) {
+        debugPrint('[BackgroundGPS] 🚫 跳過通勤時段檢查，直接記錄GPS');
+        // 直接執行GPS記錄邏輯
+        final result = await GPSService.recordCurrentLocation(userId);
+        
+        if (result.success) {
+          debugPrint('[BackgroundGPS] ✅ 測試模式GPS記錄成功: ${result.latitude}, ${result.longitude}');
+          
+          // 可選：顯示記錄成功通知
+          final prefs = await SharedPreferences.getInstance();
+          final showNotifications = prefs.getBool('show_gps_notifications') ?? false;
+          if (showNotifications) {
+            await BackgroundGPSService.showGPSRecordNotification(
+              latitude: result.latitude!,
+              longitude: result.longitude!,
+              timestamp: result.timestamp!.toIso8601String(),
+            );
+          }
+        } else {
+          debugPrint('[BackgroundGPS] ❌ 測試模式GPS記錄失敗: ${result.error}');
+        }
+        return;
+      }
+      
       // 檢查是否在通勤時段內
       final prefs = await SharedPreferences.getInstance();
       final settingsJson = prefs.getString('commute_time_settings');

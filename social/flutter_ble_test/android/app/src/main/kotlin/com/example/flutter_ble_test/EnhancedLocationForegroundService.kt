@@ -85,6 +85,7 @@ class EnhancedLocationForegroundService : Service() {
     // 統計數據
     private var locationUpdateCount = 0
     private var lastLocationTime = 0L
+    private var previousLocationTime = 0L // 添加前一次位置時間
     private var uploadSuccessCount = 0
     private var uploadFailureCount = 0
 
@@ -171,6 +172,9 @@ class EnhancedLocationForegroundService : Service() {
             return
         }
         
+        // 檢查系統設定和優化建議
+        checkSystemOptimizations()
+        
         try {
             // 獲取 WakeLock
             if (!wakeLock.isHeld) {
@@ -198,19 +202,60 @@ class EnhancedLocationForegroundService : Service() {
             stopSelf()
         }
     }
+    
+    /**
+     * 檢查系統優化設定並提供建議
+     */
+    private fun checkSystemOptimizations() {
+        try {
+            val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+            
+            // 檢查電池優化白名單
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val isIgnoringOptimizations = powerManager.isIgnoringBatteryOptimizations(packageName)
+                if (!isIgnoringOptimizations) {
+                    Log.w(TAG, "⚠️ 應用未加入電池優化白名單，可能影響GPS間隔準確性")
+                    Log.i(TAG, "💡 建議：在系統設定 > 電池 > 電池優化中將此應用設為不優化")
+                } else {
+                    Log.d(TAG, "✅ 應用已加入電池優化白名單")
+                }
+            }
+            
+            // 檢查Doze模式提醒
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Log.i(TAG, "💡 提醒：Doze模式和App Standby可能影響高頻率定位")
+                Log.i(TAG, "💡 建議：在開發者選項中禁用Doze模式進行測試")
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ 檢查系統優化設定失敗", e)
+        }
+    }
 
     private fun setupLocationRequest() {
+        // 針對高頻率定位進行優化配置
+        val intervalMillis = (intervalSeconds * 1000).toLong()
+        // 對於10秒以下的間隔，使用更激進的設定
+        val fastestIntervalMillis = if (intervalSeconds <= 10) {
+            intervalMillis // 最小間隔等於主間隔，不進行節流
+        } else {
+            maxOf(5000L, intervalMillis / 2) // 大於10秒時才使用節流
+        }
+        
         locationRequest = LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY,
-            (intervalSeconds * 1000).toLong() // 轉換為毫秒
+            intervalMillis // 主要間隔
         ).apply {
             setMinUpdateDistanceMeters(0f) // 不限制距離
-            setMinUpdateIntervalMillis((intervalSeconds * 1000).toLong())
-            setMaxUpdateDelayMillis((intervalSeconds * 2000).toLong()) // 最大延遲
-            setWaitForAccurateLocation(false) // 不等待高精度
+            setMinUpdateIntervalMillis(fastestIntervalMillis) // 設定最小間隔
+            setMaxUpdateDelayMillis(intervalMillis / 2) // 最大延遲設為主間隔的一半，避免過度延遲
+            setWaitForAccurateLocation(false) // 不等待高精度以提高響應速度
+            setGranularity(Granularity.GRANULARITY_FINE) // 使用精細粒度
+            setDurationMillis(Long.MAX_VALUE) // 持續運行
         }.build()
         
-        Log.d(TAG, "📍 位置請求已配置 - 間隔: ${intervalSeconds}秒, 優先級: 高精度")
+        Log.d(TAG, "📍 位置請求已配置 - 主間隔: ${intervalSeconds}秒, 最小間隔: ${fastestIntervalMillis/1000}秒, 最大延遲: ${(intervalMillis/2)/1000}秒")
+        Log.d(TAG, "🔧 配置詳情 - intervalMillis: $intervalMillis, fastestInterval: $fastestIntervalMillis, maxDelay: ${intervalMillis/2}")
     }
 
     private fun setupLocationCallback() {
@@ -251,25 +296,75 @@ class EnhancedLocationForegroundService : Service() {
         ).addOnCompleteListener { task ->
             if (task.isSuccessful) {
                 Log.d(TAG, "🎯 位置更新請求成功")
+                // 請求當前位置以減少冷啟動延遲
+                requestLastKnownLocation()
             } else {
                 Log.e(TAG, "❌ 位置更新請求失敗: ${task.exception}")
+            }
+        }
+    }
+    
+    /**
+     * 請求最後已知位置以減少首次GPS延遲
+     */
+    private fun requestLastKnownLocation() {
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        
+        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+            if (location != null) {
+                val age = System.currentTimeMillis() - location.time
+                if (age < 60000) { // 如果位置不超過1分鐘
+                    Log.d(TAG, "🎯 使用快取位置減少首次延遲 (${age/1000}秒前)")
+                    // 不調用handleLocationUpdate，避免重複計數
+                }
             }
         }
     }
 
     private fun handleLocationUpdate(location: Location) {
         locationUpdateCount++
+        previousLocationTime = lastLocationTime
         lastLocationTime = System.currentTimeMillis()
+        
+        // 計算實際間隔
+        val actualInterval = if (previousLocationTime > 0) {
+            (lastLocationTime - previousLocationTime) / 1000.0
+        } else {
+            0.0
+        }
         
         Log.d(TAG, "📍 位置更新 #$locationUpdateCount: ${location.latitude}, ${location.longitude}")
         Log.d(TAG, "📊 精度: ${location.accuracy}m, 時間: ${Date(location.time)}")
+        if (actualInterval > 0) {
+            Log.d(TAG, "⏱️ 實際間隔: ${String.format("%.1f", actualInterval)}秒 (設定: ${intervalSeconds}秒)")
+            
+            // 如果間隔異常，記錄警告
+            val expectedInterval = intervalSeconds.toDouble()
+            val tolerance = expectedInterval * 0.3 // 允許30%的誤差
+            if (actualInterval > expectedInterval + tolerance) {
+                Log.w(TAG, "⚠️ 間隔異常: 實際${String.format("%.1f", actualInterval)}秒 > 預期${expectedInterval}秒+${String.format("%.1f", tolerance)}秒")
+            }
+        }
         
         // 更新通知
         updateNotification(location)
         
         // 檢查通勤時段再決定是否上傳
-        if (isInCommuteTime()) {
-            Log.d(TAG, "✅ 在通勤時段內，上傳位置")
+        val shouldSkip = shouldSkipCommuteTimeCheck()
+        val inCommuteTime = if (!shouldSkip) isInCommuteTime() else false
+        
+        if (shouldSkip || inCommuteTime) {
+            if (shouldSkip) {
+                Log.d(TAG, "🚫 測試模式：跳過通勤時段檢查，直接上傳位置")
+            } else {
+                Log.d(TAG, "✅ 在通勤時段內，上傳位置")
+            }
             // 異步上傳位置
             serviceScope.launch {
                 uploadLocationToServer(location)
@@ -416,6 +511,21 @@ class EnhancedLocationForegroundService : Service() {
             this,
             Manifest.permission.ACCESS_COARSE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
+    }
+    
+    /**
+     * 檢查是否應該跳過通勤時段檢查（測試模式）
+     */
+    private fun shouldSkipCommuteTimeCheck(): Boolean {
+        return try {
+            val sharedPreferences = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            val skipCheck = sharedPreferences.getBoolean("flutter.skip_commute_time_check", false)
+            Log.d(TAG, "🔍 跳過通勤時段檢查設定: $skipCheck")
+            skipCheck
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ 讀取跳過通勤時段檢查設定失敗", e)
+            false
+        }
     }
     
     /**
