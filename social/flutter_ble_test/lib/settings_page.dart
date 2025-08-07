@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 import 'dart:convert';
@@ -17,16 +16,12 @@ class SettingsPage extends StatefulWidget {
   final bool isAdvertising;
   final Future<void> Function(bool) onToggleAdvertise;
   final TextEditingController nicknameController;
-  final void Function(Uint8List?) setAvatarThumbnailBytes;
-  final Uint8List? avatarThumbnailBytes;
   final Future<void> Function(String) onSaveNickname;
   const SettingsPage({
     super.key,
     required this.isAdvertising,
     required this.onToggleAdvertise,
     required this.nicknameController,
-    required this.setAvatarThumbnailBytes,
-    required this.avatarThumbnailBytes,
     required this.onSaveNickname,
   });
   @override
@@ -104,14 +99,8 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    // 優先使用傳入的 avatarThumbnailBytes，沒有的話才載入本地偏好設定
-    if (widget.avatarThumbnailBytes != null) {
-      setState(() {
-        _avatarImageProvider = MemoryImage(widget.avatarThumbnailBytes!);
-      });
-    } else {
-      _loadAvatarFromPrefs();
-    }
+    // 從本地偏好設定載入頭像
+    _loadAvatarFromPrefs();
     _autoCommuteTimer = Timer.periodic(const Duration(minutes: 1), (_) => _autoCheckCommutePeriod());
     _loadUserId();
     _loadCommuteSettings(); // 🔄 載入通勤時段設定
@@ -121,11 +110,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void didUpdateWidget(covariant SettingsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.avatarThumbnailBytes != null && widget.avatarThumbnailBytes != oldWidget.avatarThumbnailBytes) {
-      setState(() {
-        _avatarImageProvider = MemoryImage(widget.avatarThumbnailBytes!);
-      });
-    }
+    // 頭像更新現在通過 _loadAvatarFromPrefs() 處理
   }
 
   @override

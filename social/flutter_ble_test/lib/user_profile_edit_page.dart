@@ -4,8 +4,10 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
 import 'api_config.dart';
+import 'avatar_page.dart';
 
 class UserProfileEditPage extends StatefulWidget {
   final String userId;
@@ -271,6 +273,60 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
           ),
         );
       }
+    }
+  }
+  
+  // 導航到AI頭像生成頁面
+  Future<void> _navigateToAvatarGeneration() async {
+    try {
+      // 導航到AvatarPage，並等待結果
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AvatarPage(
+            setAvatarThumbnailBytes: (bytes) {
+              // 處理從AvatarPage回傳的頭像數據
+              if (bytes != null) {
+                setState(() {
+                  _avatarImageProvider = MemoryImage(bytes);
+                  // 將bytes轉換為File以便後續上傳
+                  _saveAvatarFromBytes(bytes);
+                });
+              }
+            },
+            avatarThumbnailBytes: null, // 不傳入現有頭像
+          ),
+        ),
+      );
+      
+      debugPrint('[UserProfileEdit] 從AVATAR頁面返回，結果: $result');
+    } catch (e) {
+      debugPrint('[UserProfileEdit] 導航到AVATAR頁面時發生錯誤: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('無法開啟AI頭像生成功能: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+  
+  // 將bytes保存為臨時文件
+  Future<void> _saveAvatarFromBytes(Uint8List bytes) async {
+    try {
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/generated_avatar_${DateTime.now().millisecondsSinceEpoch}.png');
+      await file.writeAsBytes(bytes);
+      
+      setState(() {
+        _selectedAvatarFile = file;
+      });
+      
+      debugPrint('[UserProfileEdit] AI生成頭像已保存為臨時文件: ${file.path}');
+    } catch (e) {
+      debugPrint('[UserProfileEdit] 保存AI生成頭像失敗: $e');
     }
   }
   
@@ -764,6 +820,33 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           ),
                         ],
+                        const SizedBox(height: 16),
+                        // 頭貼選擇選項
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            ElevatedButton.icon(
+                              onPressed: _pickAvatar,
+                              icon: const Icon(Icons.photo_library, size: 18),
+                              label: const Text('本地相片', style: TextStyle(fontSize: 12)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              ),
+                            ),
+                            ElevatedButton.icon(
+                              onPressed: _navigateToAvatarGeneration,
+                              icon: const Icon(Icons.face, size: 18),
+                              label: const Text('AI生成', style: TextStyle(fontSize: 12)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.purple,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),

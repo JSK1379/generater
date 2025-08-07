@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'ble_scan_body.dart';
 import 'settings_page.dart';
-import 'avatar_page.dart';
 import 'chat_room_list_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:typed_data';
 import 'settings_ble_helper.dart';
 import '_test_tab.dart';
 import 'chat_service_singleton.dart';
@@ -23,7 +21,6 @@ class MainTabPageState extends State<MainTabPage> {
   int currentIndex = 0;
   bool _isAdvertising = false;
   final TextEditingController _nicknameController = TextEditingController();
-  Uint8List? _avatarThumbnailBytes;
   
   // 使用全局管理器管理聊天室開啟狀態
   final ChatRoomOpenManager _openManager = ChatRoomOpenManager();
@@ -58,22 +55,12 @@ class MainTabPageState extends State<MainTabPage> {
     await prefs.setString('nickname', nickname);
   }
 
-  void _setAvatarThumbnailBytes(Uint8List? bytes) {
-    setState(() {
-      _avatarThumbnailBytes = bytes;
-    });
-  }
-
   void updateChatHistoryDisplay() {
     setState(() {});
   }
 
   List<Widget> get _pages => [
     const BleScanBody(),
-    AvatarPage(
-      setAvatarThumbnailBytes: _setAvatarThumbnailBytes,
-      avatarThumbnailBytes: _avatarThumbnailBytes,
-    ),
     const ChatRoomListPage(), // 移除條件判斷，常態顯示
     // 新增測試分頁
     const TestTab(),
@@ -100,15 +87,12 @@ class MainTabPageState extends State<MainTabPage> {
         debugPrint('[MainTabPage] onToggleAdvertise: $v, nickname: $nickname, userId: $userId');
       },
       nicknameController: _nicknameController,
-      setAvatarThumbnailBytes: _setAvatarThumbnailBytes,
-      avatarThumbnailBytes: _avatarThumbnailBytes,
       onSaveNickname: _saveNicknameToPrefs,
     ),
   ];
 
   List<BottomNavigationBarItem> get _items => [
     const BottomNavigationBarItem(icon: Icon(Icons.bluetooth), label: '藍牙'),
-    const BottomNavigationBarItem(icon: Icon(Icons.face), label: 'Avatar'),
     const BottomNavigationBarItem(icon: Icon(Icons.chat), label: '聊天室'), // 移除條件判斷，常態顯示
     const BottomNavigationBarItem(icon: Icon(Icons.science), label: '測試'),
     const BottomNavigationBarItem(icon: Icon(Icons.settings), label: '設置'),
