@@ -81,6 +81,13 @@ class ChatService extends ChangeNotifier {
   void setCurrentUser(String username) {
     if (_currentUser != username) {
       _currentUser = username;
+      
+      // 如果已經連線，自動註冊新的當前用戶
+      if (_isConnected && username.isNotEmpty) {
+        debugPrint('[ChatService] 設置當前用戶並自動註冊: $username');
+        Future.microtask(() => ensureUserRegistered(username));
+      }
+      
       // 使用 Future.microtask 確保通知不會在構建過程中觸發
       Future.microtask(() => notifyListeners());
     }
@@ -436,6 +443,13 @@ class ChatService extends ChangeNotifier {
       _currentRoom = null;
       _registeredUsers.clear(); // 清空已註冊用戶，重連時需要重新註冊
       debugPrint('[ChatService] 連線斷開，已清空註冊狀態');
+    } else {
+      // 連線成功時自動重新註冊當前用戶
+      if (_currentUser.isNotEmpty) {
+        debugPrint('[ChatService] 連線成功，自動重新註冊用戶: $_currentUser');
+        // 使用 Future.microtask 確保註冊在連線完全建立後執行
+        Future.microtask(() => ensureUserRegistered(_currentUser));
+      }
     }
     notifyListeners();
   }

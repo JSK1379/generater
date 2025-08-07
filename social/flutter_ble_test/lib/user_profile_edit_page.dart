@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import 'api_config.dart';
 
 class UserProfileEditPage extends StatefulWidget {
@@ -333,7 +334,9 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
         
         if (mounted) {
           final hasAvatarUpload = _selectedAvatarFile != null;
-          final avatarSuccess = avatarUploadResult != null;
+          final avatarSuccess = avatarUploadResult != null && 
+                                avatarUploadResult != 'timeout_error' && 
+                                avatarUploadResult != 'network_error';
           
           String message;
           if (hasAvatarUpload && avatarSuccess) {
@@ -343,7 +346,14 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
               message = '用戶資料和頭貼更新成功';
             }
           } else if (hasAvatarUpload && !avatarSuccess) {
-            message = '用戶資料更新成功，但頭貼上傳失敗';
+            // 根據不同錯誤類型提供具體訊息
+            if (avatarUploadResult == 'timeout_error') {
+              message = '用戶資料更新成功，但頭貼上傳超時，請稍後重試';
+            } else if (avatarUploadResult == 'network_error') {
+              message = '用戶資料更新成功，但網路連線問題導致頭貼上傳失敗';
+            } else {
+              message = '用戶資料更新成功，但頭貼上傳失敗';
+            }
           } else {
             message = '用戶資料更新成功';
           }
@@ -467,21 +477,38 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
         uri,
         headers: ApiConfig.jsonHeaders,
         body: jsonEncode(avatarData),
-      ).timeout(ApiConfig.uploadTimeout);
+      ).timeout(
+        ApiConfig.uploadTimeout,
+        onTimeout: () {
+          debugPrint('[UserProfileEdit] base64 頭像上傳超時 (${ApiConfig.uploadTimeout.inSeconds}秒)');
+          throw Exception('上傳超時，請檢查網路連線');
+        },
+      );
       
       debugPrint('[UserProfileEdit] base64 頭像上傳回應狀態: ${response.statusCode}');
       debugPrint('[UserProfileEdit] base64 頭像上傳回應內容: ${response.body}');
       
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-        final avatarUrl = responseData['avatar_url'] as String?;
+        
+        // 正確解析回應結構：avatar_url 在 user 物件內
+        String? avatarUrl;
+        if (responseData['user'] != null && responseData['user']['avatar_url'] != null) {
+          avatarUrl = responseData['user']['avatar_url'] as String?;
+        } else if (responseData['avatar_url'] != null) {
+          // 備用：直接從根層級取得（向下兼容）
+          avatarUrl = responseData['avatar_url'] as String?;
+        }
         
         if (avatarUrl != null && avatarUrl.isNotEmpty) {
           setState(() {
             _currentAvatarUrl = avatarUrl;
             _selectedAvatarFile = null;
-            _avatarImageProvider = NetworkImage(avatarUrl);
+            _avatarImageProvider = NetworkImage(avatarUrl!);
           });
+          
+          // 🖼️ 更新本地頭像快取
+          await _updateLocalAvatarCache(avatarUrl);
           
           debugPrint('[UserProfileEdit] base64 頭像上傳成功，URL: $avatarUrl');
           return avatarUrl;
@@ -509,7 +536,18 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
       }
     } catch (e) {
       debugPrint('[UserProfileEdit] base64 頭像上傳錯誤: $e');
-      return null;
+      
+      // 更詳細的錯誤分類
+      if (e.toString().contains('TimeoutException') || e.toString().contains('上傳超時')) {
+        debugPrint('[UserProfileEdit] 錯誤類型: 網路超時');
+        return 'timeout_error';
+      } else if (e.toString().contains('SocketException')) {
+        debugPrint('[UserProfileEdit] 錯誤類型: 網路連線問題');
+        return 'network_error';
+      } else {
+        debugPrint('[UserProfileEdit] 錯誤類型: 其他錯誤 - $e');
+        return null;
+      }
     }
   }
   
@@ -569,6 +607,35 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
         });
       }
     });
+  }
+  
+  // 🖼️ 更新本地頭像快取
+  Future<void> _updateLocalAvatarCache(String avatarUrl) async {
+    try {
+      debugPrint('[UserProfileEdit] 開始更新本地頭像快取: $avatarUrl');
+      
+      // 下載網路圖片並保存到本地
+      final response = await http.get(Uri.parse(avatarUrl));
+      if (response.statusCode == 200) {
+        final bytes = response.bodyBytes;
+        
+        // 保存到應用目錄
+        final directory = await getApplicationDocumentsDirectory();
+        final avatarFile = File('${directory.path}/avatar.png');
+        await avatarFile.writeAsBytes(bytes);
+        
+        // 更新 SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('avatar_path', avatarFile.path);
+        await prefs.setString('avatar_url', avatarUrl);
+        
+        debugPrint('[UserProfileEdit] ✅ 本地頭像快取已更新: ${avatarFile.path}');
+      } else {
+        debugPrint('[UserProfileEdit] ❌ 下載頭像失敗: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('[UserProfileEdit] ❌ 更新本地頭像快取失敗: $e');
+    }
   }
 
   @override

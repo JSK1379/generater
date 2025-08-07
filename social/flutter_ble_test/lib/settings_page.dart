@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'main_tab_page.dart';
 import 'settings_ble_helper.dart';
 import 'user_profile_edit_page.dart';
 import 'api_config.dart';
@@ -38,7 +35,6 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   ImageProvider? _avatarImageProvider;
-  final ImagePicker _picker = ImagePicker();
   Timer? _autoCommuteTimer;
   bool _autoTracking = false;
   TimeOfDay? _commuteStartMorning;
@@ -51,23 +47,19 @@ class _SettingsPageState extends State<SettingsPage> {
 
   String? _userId;
 
-  Future<void> _pickAvatarFromGallery() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
-    if (image != null) {
-      final dir = await getApplicationDocumentsDirectory();
-      final avatarFile = File('${dir.path}/avatar.png');
-      await File(image.path).copy(avatarFile.path);
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('avatar_path', avatarFile.path);
-      if (!mounted) return;
-      setState(() {
-        _avatarImageProvider = FileImage(avatarFile);
-      });
-    }
-  }
-
   Future<void> _loadAvatarFromPrefs() async {
     final prefs = await SharedPreferences.getInstance();
+    
+    // 🖼️ 優先載入網路頭像URL
+    final avatarUrl = prefs.getString('avatar_url');
+    if (avatarUrl != null && avatarUrl.isNotEmpty) {
+      setState(() {
+        _avatarImageProvider = NetworkImage(avatarUrl);
+      });
+      return;
+    }
+    
+    // 如果沒有網路頭像，則載入本地頭像
     final path = prefs.getString('avatar_path');
     if (path != null && await File(path).exists()) {
       setState(() {
@@ -670,44 +662,6 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    Center(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          showModalBottomSheet(
-                            context: context,
-                            builder: (ctx) => SafeArea(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  ListTile(
-                                    leading: const Icon(Icons.photo_library),
-                                    title: const Text('從媒體選取'),
-                                    onTap: () async {
-                                      Navigator.pop(ctx);
-                                      await _pickAvatarFromGallery();
-                                    },
-                                  ),
-                                  ListTile(
-                                    leading: const Icon(Icons.auto_awesome),
-                                    title: const Text('生成圖片'),
-                                    onTap: () {
-                                      Navigator.pop(ctx);
-                                      final mainTab = context.findAncestorStateOfType<MainTabPageState>();
-                                      if (!mounted) return;
-                                      if (mainTab != null) {
-                                        mainTab.setState(() { mainTab.currentIndex = 1; });
-                                      }
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                        child: const Text('設定頭貼'),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
                     if (_userId != null && _userId!.isNotEmpty) ...[
                       Center(
                         child: Text(
@@ -730,13 +684,16 @@ class _SettingsPageState extends State<SettingsPage> {
                                 ),
                               );
                               
-                              // 如果用戶資料有更新，重新載入暱稱
+                              // 如果用戶資料有更新，重新載入暱稱和頭像
                               if (result == true) {
                                 final prefs = await SharedPreferences.getInstance();
                                 final newNickname = prefs.getString('nickname') ?? '';
                                 if (newNickname.isNotEmpty) {
                                   widget.nicknameController.text = newNickname;
                                 }
+                                
+                                // 🖼️ 重新載入頭像
+                                await _loadAvatarFromPrefs();
                               }
                             }
                           },
