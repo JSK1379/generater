@@ -42,7 +42,6 @@ class _ChatPageState extends State<ChatPage> {
   // AI輔助聊天相關變數（用於未來擴展）
   // bool _isAIAssistantOpen = false; // 是否正在使用AI輔助
   // String? _selectedMessageType; // 選擇的訊息類型
-  List<String> _aiSuggestions = []; // AI生成的建議選項
 
   @override
   void initState() {
@@ -260,11 +259,19 @@ class _ChatPageState extends State<ChatPage> {
         return;
       }
       
+      // 發送用戶訊息
       widget.chatService.sendTextMessage(
         widget.roomId,
         widget.currentUser,
         text,
       );
+      
+      // 檢查是否需要觸發 AI 回應
+      if (widget.chatService.shouldTriggerAI(text)) {
+        // 異步發送 AI 訊息，不阻塞用戶界面
+        widget.chatService.sendAIMessage(widget.roomId, text);
+      }
+      
       _messageController.clear();
       
       // 重置輸入相關狀態
@@ -418,364 +425,542 @@ class _ChatPageState extends State<ChatPage> {
 
   // AI輔助聊天功能
   Future<void> _showAIAssistantDialog() async {
-    // 第一階段：選擇訊息類型
-    final messageType = await _showMessageTypeSelection();
-    if (messageType == null) return;
+    // 檢查 AI 服務是否可用
+    if (!widget.chatService.isAIServiceAvailable) {
+      _showAIConfigurationDialog();
+      return;
+    }
     
-    // 第二階段：顯示AI建議選項
-    await _showAISuggestions(messageType);
-  }
-  
-  // 顯示訊息類型選擇對話框
-  Future<String?> _showMessageTypeSelection() async {
-    return await showModalBottomSheet<String>(
+    // 顯示 AI 功能選擇對話框
+    showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (BuildContext context) {
-        return SafeArea(
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height * 0.8,
-            child: Column(
-              children: [
-                // 固定頭部內容
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // 標題
-                      Row(
-                        children: [
-                          const Icon(Icons.smart_toy, color: Colors.purple, size: 28),
-                          const SizedBox(width: 12),
-                          const Text(
-                            'AI輔助聊天',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const Spacer(),
-                          IconButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            icon: const Icon(Icons.close),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        '請選擇您想要傳送的訊息類型：',
-                        style: TextStyle(fontSize: 16, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ),
-                
-                // 可滾動的訊息類型選項
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Column(
-                      children: _buildMessageTypeOptions(),
-                    ),
-                  ),
-                ),
-                
-                // 底部間距
-                const SizedBox(height: 20),
-              ],
-            ),
-          ),
-        );
-      },
+      builder: (context) => _buildAIAssistantBottomSheet(),
     );
   }
   
-  // 建立訊息類型選項
-  List<Widget> _buildMessageTypeOptions() {
-    final messageTypes = [
-      {'type': '問候', 'icon': Icons.waving_hand, 'description': '打招呼、問好'},
-      {'type': '感謝', 'icon': Icons.favorite, 'description': '表達感謝、感激'},
-      {'type': '邀請', 'icon': Icons.event_available, 'description': '邀請活動、聚會'},
-      {'type': '詢問', 'icon': Icons.help_outline, 'description': '提出問題、詢問'},
-      {'type': '道歉', 'icon': Icons.sentiment_very_dissatisfied, 'description': '表達歉意、道歉'},
-      {'type': '關心', 'icon': Icons.health_and_safety, 'description': '關心對方、問候近況'},
-      {'type': '分享', 'icon': Icons.share, 'description': '分享心情、經驗'},
-      {'type': '鼓勵', 'icon': Icons.emoji_emotions, 'description': '給予鼓勵、支持'},
-    ];
-    
-    return messageTypes.map((typeData) {
-      return Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () => Navigator.of(context).pop(typeData['type'] as String),
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300, width: 1),
-                borderRadius: BorderRadius.circular(12),
-                color: Colors.transparent,
+  // 構建 AI 助手底部彈窗
+  Widget _buildAIAssistantBottomSheet() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 標題
+          Row(
+            children: [
+              const Icon(Icons.smart_toy, color: Colors.purple, size: 28),
+              const SizedBox(width: 12),
+              const Text(
+                '🤖 AI 助手',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
-              child: Row(
-                children: [
-                  // 圖標
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.purple.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      typeData['icon'] as IconData,
-                      color: Colors.purple,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  // 文字內容
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          typeData['type'] as String,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          typeData['description'] as String,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // 箭頭圖標
-                  Icon(
-                    Icons.chevron_right,
-                    color: Colors.grey.shade400,
-                    size: 20,
-                  ),
-                ],
+              const Spacer(),
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close),
               ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          
+          // AI 功能選項
+          GridView.count(
+            shrinkWrap: true,
+            crossAxisCount: 2,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 2.0, // 調整為 2.0，增加卡片高度
+            children: [
+              _buildAIOptionCard(
+                icon: Icons.reply,
+                title: '回覆建議',
+                subtitle: '生成回覆建議',
+                onTap: () => _generateReplySuggestion(),
+              ),
+              _buildAIOptionCard(
+                icon: Icons.summarize,
+                title: '對話總結',
+                subtitle: '總結聊天內容',
+                onTap: () => _generateChatSummary(),
+              ),
+              _buildAIOptionCard(
+                icon: Icons.emoji_emotions,
+                title: '情緒分析',
+                subtitle: '分析訊息情緒',
+                onTap: () => _showEmotionAnalysis(),
+              ),
+              _buildAIOptionCard(
+                icon: Icons.settings,
+                title: 'AI 設定',
+                subtitle: '調整 AI 個性',
+                onTap: () => _showAISettings(),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 20),
+          
+          // 提示文字
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Text(
+              '💡 提示：在訊息中使用 @ai、@助手、? 等關鍵字可自動觸發 AI 回應',
+              style: TextStyle(fontSize: 12, color: Colors.blue),
+              textAlign: TextAlign.center,
             ),
           ),
-        ),
-      );
-    }).toList();
+        ],
+      ),
+    );
   }
   
-  // 顯示AI建議選項
-  Future<void> _showAISuggestions(String messageType) async {
-    // 模擬AI生成建議（實際應該調用AI API）
-    final suggestions = _generateMockAISuggestions(messageType);
-    
-    setState(() {
-      _aiSuggestions = suggestions;
-    });
-    
-    if (!mounted) return;
-    
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      isDismissible: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (BuildContext context) {
-        return SizedBox(
-          height: MediaQuery.of(context).size.height * 0.7,
+  // 構建 AI 選項卡片
+  Widget _buildAIOptionCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      elevation: 2,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(8), // 減少 padding 從 12 到 8
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // 固定頭部內容
-              Container(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 標題
-                    Row(
-                      children: [
-                        const Icon(Icons.lightbulb, color: Colors.amber, size: 28),
-                        const SizedBox(width: 12),
-                        Text(
-                          'AI建議：$messageType',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const Spacer(),
-                        IconButton(
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                            _resetAIAssistant();
-                          },
-                          icon: const Icon(Icons.close),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      '選擇一個您喜歡的選項：',
-                      style: TextStyle(fontSize: 14, color: Colors.grey),
-                    ),
-                  ],
-                ),
+              Icon(icon, color: Colors.purple, size: 20), // 減少圖示大小
+              const SizedBox(height: 3), // 減少間距
+              Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11), // 略微減少字體大小
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              
-              // 可滾動的AI建議選項
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  itemCount: suggestions.length,
-                  itemBuilder: (context, index) {
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: Card(
-                        elevation: 2,
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: Colors.purple.shade100,
-                            child: Text(
-                              '${index + 1}',
-                              style: TextStyle(
-                                color: Colors.purple.shade700,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          title: Text(
-                            suggestions[index],
-                            style: const TextStyle(fontSize: 15),
-                          ),
-                          onTap: () {
-                            Navigator.of(context).pop();
-                            _selectAISuggestion(suggestions[index]);
-                          },
-                          contentPadding: const EdgeInsets.all(12),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              
-              // 固定底部按鈕
-              Container(
-                padding: const EdgeInsets.all(20),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      _showAISuggestions(messageType); // 重新生成
-                    },
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('重新生成建議'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
+              const SizedBox(height: 1), // 減少間距
+              Expanded( // 使用 Expanded 而不是 Flexible，確保利用所有可用空間
+                child: Text(
+                  subtitle,
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 9), // 略微減少字體大小
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
   
-  // 模擬AI生成建議（實際應該調用AI API）
-  List<String> _generateMockAISuggestions(String messageType) {
-    final suggestionMap = {
-      '問候': [
-        '嗨！你好嗎？希望你今天過得愉快！',
-        '早安！今天是美好的一天，你有什麼計劃嗎？',
-        '哈囉～好久不見，最近怎麼樣？',
-        '你好！很高興又能和你聊天了～'
-      ],
-      '感謝': [
-        '真的非常感謝你的幫助，太感激了！',
-        '謝謝你總是在我需要的時候出現💕',
-        '感謝你的耐心和理解，你真的很棒！',
-        '謝謝你讓我的一天變得更美好～'
-      ],
-      '邀請': [
-        '這個週末要不要一起出去走走？',
-        '下次有時間的話，我們約個咖啡聊聊吧！',
-        '最近有個很棒的活動，要不要一起參加？',
-        '如果你有空的話，歡迎來我們的聚會！'
-      ],
-      '詢問': [
-        '請問你對這件事情有什麼看法嗎？',
-        '能不能請教你一個問題？',
-        '你覺得這樣做會比較好嗎？',
-        '想聽聽你的建議，你覺得呢？'
-      ],
-      '道歉': [
-        '真的很抱歉，是我考慮不周。',
-        '對不起讓你等這麼久，下次我會注意的。',
-        '很抱歉造成你的困擾，我會改進的。',
-        'Sorry，是我的錯，請原諒我。'
-      ],
-      '關心': [
-        '你最近還好嗎？有什麼需要幫忙的嗎？',
-        '天氣變冷了，記得多穿點衣服保暖喔！',
-        '工作不要太累，記得好好休息～',
-        '希望你一切都順利，有事隨時找我！'
-      ],
-      '分享': [
-        '今天發生了一件很有趣的事情想和你分享！',
-        '我剛看到一個很棒的東西，推薦給你～',
-        '分享一個好消息，希望你也會開心！',
-        '想和你聊聊最近的一些想法和感受。'
-      ],
-      '鼓勵': [
-        '你一定可以的！我相信你的能力！',
-        '加油！困難只是暫時的，你很棒！',
-        '不要放棄，你已經做得很好了！',
-        '相信自己，你比想像中還要厲害！'
-      ],
-    };
+  // 顯示 AI 提問對話框
+  void _generateReplySuggestion() async {
+    Navigator.pop(context); // 關閉底部彈窗
     
-    return suggestionMap[messageType] ?? [
-      '這是一個很棒的想法！',
-      '我覺得你說得很有道理。',
-      '謝謝你的分享，很有意思！',
-      '希望我們能夠繼續保持聯繫。'
-    ];
+    // 取得最近的幾條訊息作為上下文
+    final messages = widget.chatService.getMessagesForRoom(widget.roomId);
+    if (messages.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('沒有對話內容可以分析')),
+      );
+      return;
+    }
+    
+    // 顯示載入中
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('🤖 AI 正在生成回覆建議...'),
+          ],
+        ),
+      ),
+    );
+    
+    try {
+      // 檢查是否有對話內容
+      final messages = widget.chatService.getMessagesForRoom(widget.roomId);
+      final userMessages = messages.where((msg) => !msg.sender.startsWith('ai_')).toList();
+      
+      String suggestion;
+      if (userMessages.isEmpty) {
+        // 沒有對話內容時，生成問候語
+        suggestion = await widget.chatService.generateReplySuggestion(
+          widget.roomId, 
+          '請生成一條友善的問候語來開始對話', // 明確指示生成問候語
+          widget.currentUser
+        );
+      } else {
+        // 有對話內容時，生成回覆建議
+        suggestion = await widget.chatService.generateReplySuggestion(
+          widget.roomId, 
+          '', // 空字符串，因為 ChatService 會自己分析訊息
+          widget.currentUser
+        );
+      }
+      
+      // 關閉載入對話框
+      if (mounted) Navigator.pop(context);
+      
+      if (suggestion.isNotEmpty) {
+        // 將建議填入打字欄
+        setState(() {
+          _messageController.text = suggestion;
+        });
+        
+        // 顯示成功提示
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('✅ 回覆建議已填入打字欄')),
+          );
+          
+          // 聚焦到輸入框
+          FocusScope.of(context).requestFocus();
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('❌ 無法生成回覆建議')),
+          );
+        }
+      }
+    } catch (e) {
+      // 關閉載入對話框
+      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ 生成回覆建議失敗: $e')),
+        );
+      }
+    }
   }
   
-  // 選擇AI建議並發送
-  void _selectAISuggestion(String suggestion) {
-    _messageController.text = suggestion;
-    _resetAIAssistant();
+  // 生成聊天總結
+  void _generateChatSummary() async {
+    Navigator.pop(context); // 關閉底部彈窗
     
-    // 自動聚焦到輸入框
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      FocusScope.of(context).requestFocus(FocusNode());
-    });
+    // 檢查是否有足夠的訊息進行總結
+    final messages = widget.chatService.getMessagesForRoom(widget.roomId);
+    final userMessages = messages.where((msg) => !msg.sender.startsWith('ai_')).toList();
+    
+    if (userMessages.length < 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('需要至少3條用戶訊息才能進行總結分析')),
+      );
+      return;
+    }
+    
+    // 顯示載入中
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Text('AI 正在分析對話內容...'),
+          ],
+        ),
+      ),
+    );
+    
+    try {
+      final summary = await widget.chatService.generateChatSummary(widget.roomId);
+      
+      if (mounted) {
+        Navigator.pop(context); // 關閉載入對話框
+        
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.summarize, color: Colors.blue),
+                SizedBox(width: 8),
+                Text('📊 對話總結'),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '基於最近 ${userMessages.length} 條訊息的分析：',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(summary),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      '💡 提示：可以要求 AI 基於這個總結提供更多建議',
+                      style: TextStyle(fontSize: 12, color: Colors.blue),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('關閉'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  widget.chatService.sendAIMessage(widget.roomId, '請基於這個對話總結，為我提供一些有用的回覆建議和對話方向：$summary');
+                },
+                child: const Text('請 AI 提供建議'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // 關閉載入對話框
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('生成總結失敗：$e')),
+        );
+      }
+    }
   }
   
-  // 重置AI輔助狀態
-  void _resetAIAssistant() {
-    setState(() {
-      _aiSuggestions.clear();
-    });
+  // 顯示情緒分析
+  void _showEmotionAnalysis() async {
+    Navigator.pop(context); // 關閉底部彈窗
+    
+    // 獲取最近的用戶訊息進行分析
+    final messages = widget.chatService.getMessagesForRoom(widget.roomId);
+    final recentUserMessages = messages
+        .where((msg) => !msg.sender.startsWith('ai_'))
+        .take(5)
+        .toList();
+    
+    if (recentUserMessages.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('沒有用戶訊息可以分析')),
+      );
+      return;
+    }
+    
+    // 顯示載入中
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('🤖 AI 正在分析對話情緒...'),
+          ],
+        ),
+      ),
+    );
+    
+    try {
+      // 準備分析內容
+      final analysisContent = recentUserMessages
+          .map((msg) => '${msg.sender}: ${msg.content}')
+          .join('\n');
+      
+      // 生成情緒分析
+      final analysis = await widget.chatService.generateEmotionAnalysis(
+        widget.roomId,
+        analysisContent,
+        widget.currentUser
+      );
+      
+      if (mounted) {
+        Navigator.pop(context); // 關閉載入對話框
+        
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.emoji_emotions, color: Colors.orange),
+                SizedBox(width: 8),
+                Text('😊 情緒分析'),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '基於最近 ${recentUserMessages.length} 條訊息的情緒分析：',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(analysis),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      '💡 提示：可以要求 AI 根據情緒分析提供溝通建議',
+                      style: TextStyle(fontSize: 12, color: Colors.orange),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('關閉'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  widget.chatService.sendAIMessage(
+                    widget.roomId, 
+                    '基於剛才的情緒分析，請為我提供一些溝通建議和適合的回覆方式：$analysis'
+                  );
+                },
+                child: const Text('請 AI 提供溝通建議'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // 關閉載入對話框
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('情緒分析失敗：$e')),
+        );
+      }
+    }
+  }
+  
+  // 顯示 AI 設定
+  void _showAISettings() {
+    Navigator.pop(context); // 關閉底部彈窗
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.settings, color: Colors.green),
+            SizedBox(width: 8),
+            Text('⚙️ AI 設定'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('選擇 AI 個性：', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            ...widget.chatService.getAvailableAIPersonalities().map((personality) {
+              return RadioListTile<String>(
+                title: Text(_getPersonalityDisplayName(personality)),
+                subtitle: Text(_getPersonalityDescription(personality)),
+                value: personality,
+                groupValue: widget.chatService.getCurrentAIPersonality(),
+                onChanged: (value) {
+                  if (value != null) {
+                    widget.chatService.setAIPersonality(value);
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('AI 個性已切換至：${_getPersonalityDisplayName(value)}')),
+                    );
+                  }
+                },
+              );
+            }),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('關閉'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // 獲取個性顯示名稱
+  String _getPersonalityDisplayName(String personality) {
+    switch (personality) {
+      case 'default': return '🤖 預設';
+      case 'funny': return '😄 幽默';
+      case 'professional': return '💼 專業';
+      case 'casual': return '😊 輕鬆';
+      default: return personality;
+    }
+  }
+  
+  // 獲取個性描述
+  String _getPersonalityDescription(String personality) {
+    switch (personality) {
+      case 'default': return '友善、樂於助人';
+      case 'funny': return '幽默風趣，喜歡開玩笑';
+      case 'professional': return '專業正式，提供詳細信息';
+      case 'casual': return '輕鬆隨意，像朋友聊天';
+      default: return '';
+    }
+  }
+  
+  // 顯示 AI 配置對話框
+  void _showAIConfigurationDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('⚠️ AI 功能未配置'),
+          ],
+        ),
+        content: const Text(
+          'AI 功能需要配置 Google Gemini API Key 才能使用。\n\n'
+          '請在 lib/gemini_service.dart 文件中設定您的 API Key。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('我知道了'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -899,7 +1084,9 @@ class _ChatPageState extends State<ChatPage> {
                           controller: _messageController,
                           enabled: isConnected,
                           decoration: InputDecoration(
-                            hintText: isConnected ? '輸入訊息...' : '連線中，請稍候...',
+                            hintText: isConnected 
+                                ? '輸入訊息... (使用 @ai 呼叫 AI 助手)' 
+                                : '連線中，請稍候...',
                             border: const OutlineInputBorder(),
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 12,
@@ -956,8 +1143,11 @@ class _ChatPageState extends State<ChatPage> {
   Widget _buildMessageBubble(ChatMessage message, bool isMe) {
     debugPrint('[ChatPage] 構建訊息氣泡: sender=${message.sender}, currentUser=${widget.currentUser}, isMe=$isMe, content=${message.content}');
     
+    // 檢查是否為 AI 訊息
+    final isAI = message.sender.startsWith('ai_');
+    
     return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: isMe ? Alignment.centerRight : (isAI ? Alignment.centerLeft : Alignment.centerLeft),
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         child: Column(
@@ -967,19 +1157,28 @@ class _ChatPageState extends State<ChatPage> {
             if (!isMe)
               Padding(
                 padding: const EdgeInsets.only(left: 12, bottom: 4),
-                child: FutureBuilder<String>(
-                  future: widget.chatService.getUserNickname(message.sender),
-                  builder: (context, snapshot) {
-                    final displayName = snapshot.data ?? message.sender;
-                    return Text(
-                      displayName,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    );
-                  },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isAI) ...[
+                      const Icon(Icons.smart_toy, size: 14, color: Colors.purple),
+                      const SizedBox(width: 4),
+                    ],
+                    FutureBuilder<String>(
+                      future: widget.chatService.getUserNickname(message.sender),
+                      builder: (context, snapshot) {
+                        final displayName = isAI ? '🤖 AI 助手' : (snapshot.data ?? message.sender);
+                        return Text(
+                          displayName,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isAI ? Colors.purple : Colors.grey.shade600,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ),
             
@@ -990,7 +1189,10 @@ class _ChatPageState extends State<ChatPage> {
               ),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
-                color: isMe ? Theme.of(context).primaryColor : Colors.grey.shade200,
+                color: isMe 
+                    ? Theme.of(context).primaryColor 
+                    : (isAI ? Colors.purple.shade50 : Colors.grey.shade200),
+                border: isAI ? Border.all(color: Colors.purple.shade200, width: 1) : null,
                 borderRadius: BorderRadius.circular(18),
               ),
               child: Column(

@@ -236,5 +236,145 @@ class UserApiService {
     return null;
   }
 
+  /// 🤖 AI 文字生成功能
+  /// 透過您的後端 API 調用 AI 服務
+  Future<String?> generateAIResponse({
+    required String message,
+    String? context,
+    String? personality = 'default',
+    String? roomId,
+  }) async {
+    try {
+      debugPrint('[UserApiService] 🤖 開始 AI 文字生成: $message');
+      
+      final cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
+      final uri = Uri.parse('${cleanBaseUrl}ai/generate');
+      
+      final requestBody = {
+        'message': message,
+        'personality': personality ?? 'default',
+      };
+      
+      // 添加上下文（如果有的話）
+      if (context != null && context.isNotEmpty) {
+        requestBody['context'] = context;
+      }
+      
+      // 添加房間 ID（如果有的話）
+      if (roomId != null && roomId.isNotEmpty) {
+        requestBody['roomId'] = roomId;
+      }
+
+      final response = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode(requestBody),
+      );
+
+      debugPrint('[UserApiService] AI API 響應狀態: ${response.statusCode}');
+      debugPrint('[UserApiService] AI API 響應內容: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        
+        // 處理不同的響應格式
+        if (data is Map<String, dynamic>) {
+          // 如果響應是 JSON 對象，嘗試找到 AI 回應
+          final aiResponse = data['response'] ?? 
+                           data['message'] ?? 
+                           data['content'] ?? 
+                           data['text'] ?? 
+                           data['result'];
+          
+          if (aiResponse != null && aiResponse.toString().isNotEmpty) {
+            debugPrint('[UserApiService] ✅ AI 回應成功');
+            return aiResponse.toString();
+          }
+        } else if (data is String && data.isNotEmpty) {
+          // 如果響應直接是字串
+          debugPrint('[UserApiService] ✅ AI 回應成功（字串格式）');
+          return data;
+        }
+        
+        debugPrint('[UserApiService] ❌ AI 響應格式不正確: $data');
+        return '❌ AI 響應格式錯誤';
+      } else if (response.statusCode == 404) {
+        debugPrint('[UserApiService] ❌ AI 端點不存在 (404)');
+        return '❌ AI 功能尚未在後端實現\n請聯繫開發人員添加 /ai/generate 端點';
+      } else {
+        debugPrint('[UserApiService] ❌ AI API 請求失敗: ${response.statusCode}');
+        return '❌ AI 服務暫時無法使用 (${response.statusCode})';
+      }
+    } catch (e) {
+      debugPrint('[UserApiService] ❌ AI 請求異常: $e');
+      return '❌ AI 服務連接失敗：$e';
+    }
+  }
+
+  /// 🧠 聊天總結功能
+  Future<String?> generateChatSummary(List<String> messages) async {
+    try {
+      final cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
+      final uri = Uri.parse('${cleanBaseUrl}ai/summarize');
+      
+      final response = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({
+          'messages': messages,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['summary'] ?? data['result'] ?? data['content'];
+      } else if (response.statusCode == 404) {
+        return '❌ 聊天總結功能尚未在後端實現';
+      }
+      
+      return null;
+    } catch (e) {
+      debugPrint('[UserApiService] 聊天總結請求失敗: $e');
+      return null;
+    }
+  }
+
+  /// 😊 情緒分析功能
+  Future<String?> analyzeEmotion(String message) async {
+    try {
+      final cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
+      final uri = Uri.parse('${cleanBaseUrl}ai/emotion');
+      
+      final response = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({
+          'message': message,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['emotion'] ?? data['result'] ?? data['analysis'];
+      } else if (response.statusCode == 404) {
+        return '❌ 情緒分析功能尚未在後端實現';
+      }
+      
+      return null;
+    } catch (e) {
+      debugPrint('[UserApiService] 情緒分析請求失敗: $e');
+      return null;
+    }
+  }
+
   void dispose() {}
 }

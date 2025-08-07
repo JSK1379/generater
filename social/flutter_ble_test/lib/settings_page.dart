@@ -14,6 +14,7 @@ import 'user_profile_edit_page.dart';
 import 'api_config.dart';
 import 'high_frequency_gps_test_page.dart';
 import 'background_gps_service.dart';
+import 'gemini_api_key_setup_page.dart';
 
 class SettingsPage extends StatefulWidget {
   final bool isAdvertising;
@@ -835,6 +836,58 @@ class _SettingsPageState extends State<SettingsPage> {
                         padding: EdgeInsets.only(top: 4.0),
                         child: Text('高頻率背景GPS追蹤運行中', style: TextStyle(fontSize: 12, color: Colors.green)),
                       ),
+                    const SizedBox(height: 24),
+                    
+                    // AI 設定區塊
+                    const Text('AI 助手設定', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 12),
+                    Card(
+                      elevation: 2,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.smart_toy, color: Colors.purple.shade600, size: 24),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  'Gemini AI 整合',
+                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              '設定你的 Google Gemini API Key 來啟用 AI 聊天功能',
+                              style: TextStyle(fontSize: 14, color: Colors.grey),
+                            ),
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const GeminiApiKeySetupPage(),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.key),
+                                label: const Text('設定 API Key'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.purple,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 24),
                     
                     // GPS定位功能區塊

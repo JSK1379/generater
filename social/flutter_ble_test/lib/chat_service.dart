@@ -8,11 +8,14 @@ import 'dart:convert';
 import 'user_api_service.dart';
 // import 'image_api_service.dart'; // 臨時註釋：圖片上傳功能暫時禁用
 import 'api_config.dart';
+import 'secure_gemini_service.dart'; // 安全版本的 Gemini Service
 
 class ChatService extends ChangeNotifier {
   final WebSocketService _webSocketService = WebSocketService();
   // 創建 UserApiService 實例，使用統一的API配置
   final UserApiService _userApiService = UserApiService(ApiConfig.baseUrl);
+  // 創建 GeminiService 實例，用於前端 AI 功能
+  final SecureGeminiService _geminiService = SecureGeminiService();
   // 創建 ImageApiService 實例，用於圖片上傳
   // final ImageApiService _imageApiService = ImageApiService(); // 臨時註釋：圖片上傳功能暫時禁用
   WebSocketService get webSocketService => _webSocketService;
@@ -54,6 +57,11 @@ class ChatService extends ChangeNotifier {
       _roomMessages[roomId] = <ChatMessage>[];
     }
     return _roomMessages[roomId]!;
+  }
+  
+  // 獲取指定房間的訊息列表（公開方法）
+  List<ChatMessage> getMessagesForRoom(String roomId) {
+    return _roomMessages[roomId] ?? [];
   }
 
   // 清空指定房間的訊息
@@ -760,6 +768,330 @@ class ChatService extends ChangeNotifier {
     debugPrint('ChatService: 發送聊天訊息到伺服器 - $message');
     _webSocketService.sendMessage(message);
   }
+  
+  // ===== AI 聊天功能 =====
+  
+  /// 發送 AI 訊息
+  /// 當用戶觸發 AI 功能時調用此方法
+  Future<void> sendAIMessage(String roomId, String userMessage) async {
+    try {
+      debugPrint('[ChatService] 🤖 開始處理 AI 訊息: $userMessage');
+      
+      // 檢查 API Key 是否已配置
+      if (!_geminiService.isApiKeyConfigured) {
+        await _sendAIResponse(roomId, '❌ 請先在 Gemini Service 中設定您的 API Key');
+        return;
+      }
+      
+      // 獲取聊天歷史作為上下文
+      final context = _buildContextFromHistory(roomId);
+      
+      // 顯示 AI 正在思考的訊息
+      await _sendAIResponse(roomId, '🤖 AI 正在思考中...');
+      
+      // 🔄 使用前端 Gemini Service 而不是後端 API
+      final aiResponse = await _geminiService.sendMessage(
+        userMessage,
+        context: context,
+        roomId: roomId,
+      );
+      
+      // 處理 AI 回應
+      if (aiResponse.isNotEmpty) {
+        // 替換掉"正在思考"的訊息，發送真正的 AI 回應
+        await _replaceLastAIMessage(roomId, aiResponse);
+      } else {
+        // 如果回應為空，顯示錯誤訊息
+        await _replaceLastAIMessage(roomId, '❌ AI 服務暫時無法使用，請稍後再試。');
+      }
+      
+    } catch (e) {
+      debugPrint('❌ [ChatService] AI 訊息發送失敗: $e');
+      await _replaceLastAIMessage(roomId, '❌ AI 服務發生錯誤：$e');
+    }
+  }
+  
+  /// 構建聊天歷史上下文
+  String _buildContextFromHistory(String roomId) {
+    final messages = _getOrCreateRoomMessages(roomId);
+    
+    // 只取最近 5 條非 AI 訊息作為上下文
+    final recentMessages = messages
+        .where((msg) => !msg.sender.startsWith('ai_'))
+        .take(5)
+        .map((msg) => '${msg.sender}: ${msg.content}')
+        .join('\n');
+    
+    return recentMessages.isNotEmpty 
+        ? '這是一個聊天室對話，以下是最近的對話內容：\n$recentMessages'
+        : '這是一個新的聊天室對話。';
+  }
+  
+  /// 發送 AI 回應訊息
+  Future<void> _sendAIResponse(String roomId, String response) async {
+    final messageId = 'ai_${DateTime.now().millisecondsSinceEpoch}';
+    final timestamp = DateTime.now().toUtc();
+    
+    final aiMessage = ChatMessage(
+      id: messageId,
+      type: 'text',
+      content: response,
+      sender: 'ai_assistant',
+      timestamp: timestamp,
+      imageUrl: null,
+    );
+    
+    // 添加到本地訊息列表
+    final roomMessages = _getOrCreateRoomMessages(roomId);
+    roomMessages.add(aiMessage);
+    
+    // 儲存到本地儲存
+    await _saveMessageToLocalStorage(roomId, aiMessage);
+    
+    // 通知 UI 更新
+    notifyListeners();
+    
+    debugPrint('[ChatService] 🤖 AI 回應已發送: ${response.substring(0, response.length > 50 ? 50 : response.length)}...');
+  }
+  
+  /// 替換最後一條 AI 訊息（用於替換"正在思考"的訊息）
+  Future<void> _replaceLastAIMessage(String roomId, String newContent) async {
+    final roomMessages = _getOrCreateRoomMessages(roomId);
+    
+    // 找到最後一條 AI 訊息
+    for (int i = roomMessages.length - 1; i >= 0; i--) {
+      if (roomMessages[i].sender == 'ai_assistant') {
+        // 更新訊息內容
+        final updatedMessage = ChatMessage(
+          id: roomMessages[i].id,
+          type: roomMessages[i].type,
+          content: newContent,
+          sender: roomMessages[i].sender,
+          timestamp: DateTime.now().toUtc(),
+          imageUrl: roomMessages[i].imageUrl,
+        );
+        
+        roomMessages[i] = updatedMessage;
+        
+        // 重新儲存到本地
+        await _saveMessageToLocalStorage(roomId, updatedMessage);
+        break;
+      }
+    }
+    
+    // 通知 UI 更新
+    notifyListeners();
+  }
+  
+  /// 生成回覆建議
+  Future<String> generateReplySuggestion(String roomId, String conversationContext, String currentUser) async {
+    try {
+      debugPrint('[ChatService] 🤖 開始生成回覆建議');
+      
+      // 檢查 API Key 是否已配置
+      if (!_geminiService.isApiKeyConfigured) {
+        throw Exception('請先在 Gemini Service 中設定您的 API Key');
+      }
+      
+      // 分析對話中的角色和最新訊息
+      final messages = getMessagesForRoom(roomId);
+      
+      // 如果沒有對話內容或者明確要求生成問候語
+      if (messages.isEmpty || conversationContext.contains('問候語')) {
+        // 生成友善的問候語
+        final greetingPrompt = '''
+你是一個智能助手，請為用戶 "$currentUser" 生成一條友善的問候語來開始新的對話。
+
+## 要求：
+1. 語氣要親切自然
+2. 適合用於開始聊天
+3. 使用繁體中文
+4. 簡潔明了
+5. 直接輸出問候語內容，不要包含任何前綴、說明或格式標記
+
+請生成問候語：
+''';
+        
+        final greeting = await _geminiService.sendMessage(greetingPrompt);
+        debugPrint('[ChatService] ✅ 成功生成問候語: $greeting');
+        return greeting.trim();
+      }
+      
+      // 取得最近的非 AI 訊息，找出對話對象
+      final recentNonAIMessages = messages
+          .where((msg) => !msg.sender.startsWith('ai_'))
+          .take(10)
+          .toList();
+      
+      // 找出對話中的其他參與者
+      final otherParticipants = recentNonAIMessages
+          .map((msg) => msg.sender)
+          .where((sender) => sender != currentUser)
+          .toSet()
+          .toList();
+      
+      // 構建更詳細的對話上下文
+      String detailedContext = '';
+      for (final msg in recentNonAIMessages.reversed.take(8)) {
+        if (msg.sender == currentUser) {
+          detailedContext += '我: ${msg.content}\n';
+        } else {
+          detailedContext += '${msg.sender}: ${msg.content}\n';
+        }
+      }
+      
+      // 構建回覆建議的提示詞
+      final prompt = '''
+你是一個智能助手，請幫助用戶 "$currentUser" 生成合適的回覆建議。
+
+## 對話背景：
+- 我是: $currentUser
+- 對話參與者: ${otherParticipants.join(', ')}
+- 這是一個聊天室對話
+
+## 最近的對話內容（按時間順序）：
+$detailedContext
+
+## 任務要求：
+1. 請站在 "$currentUser" 的角度，生成一個合適的回覆
+2. 回覆應該自然、友善，符合對話語境
+3. 考慮對話的情緒和主題
+4. 回覆長度適中，不要太長或太短
+5. 直接輸出回覆內容，不要包含任何前綴、說明或格式標記
+
+請生成回覆建議：
+''';
+      
+      // 使用 Gemini 生成回覆建議
+      final suggestion = await _geminiService.sendMessage(prompt);
+      
+      debugPrint('[ChatService] ✅ 成功生成回覆建議: ${suggestion.substring(0, suggestion.length > 50 ? 50 : suggestion.length)}...');
+      return suggestion.trim();
+      
+    } catch (e) {
+      debugPrint('❌ [ChatService] 生成回覆建議失敗: $e');
+      throw Exception('生成回覆建議失敗: $e');
+    }
+  }
+  
+  /// 檢查訊息是否應該觸發 AI
+  bool shouldTriggerAI(String message) {
+    // AI 觸發關鍵字
+    const aiTriggers = [
+      '@ai', '@AI', '@助手', '@機器人',
+      '請問', '幫我', '解釋', '說明',
+      '?', '？', 'help', 'Help'
+    ];
+    
+    return aiTriggers.any((trigger) => 
+      message.toLowerCase().contains(trigger.toLowerCase())
+    );
+  }
+  
+  /// 設定 AI 個性
+  void setAIPersonality(String personality) {
+    _geminiService.setPersonality(personality);
+    debugPrint('[ChatService] 🎭 AI 個性已切換至: $personality');
+  }
+  
+  /// 獲取可用的 AI 個性
+  List<String> getAvailableAIPersonalities() {
+    return _geminiService.getAvailablePersonalities();
+  }
+  
+  /// 獲取當前 AI 個性
+  String getCurrentAIPersonality() {
+    return _geminiService.currentPersonality;
+  }
+  
+  /// 生成聊天總結
+  Future<String> generateChatSummary(String roomId) async {
+    final messages = _getOrCreateRoomMessages(roomId);
+    final messageTexts = messages
+        .where((msg) => !msg.sender.startsWith('ai_'))
+        .map((msg) => '${msg.sender}: ${msg.content}')
+        .toList();
+    
+    if (messageTexts.isEmpty) {
+      return '暫無對話內容可總結';
+    }
+    
+    try {
+      // 使用前端 Gemini Service
+      final summary = await _geminiService.summarizeConversation(messageTexts);
+      return summary;
+    } catch (e) {
+      debugPrint('[ChatService] 生成聊天總結失敗: $e');
+      return '生成聊天總結時發生錯誤：$e';
+    }
+  }
+  
+  /// 生成情緒分析
+  Future<String> generateEmotionAnalysis(String roomId, String conversationContext, String currentUser) async {
+    try {
+      debugPrint('[ChatService] 🤖 開始生成情緒分析');
+      
+      // 檢查 API Key 是否已配置
+      if (!_geminiService.isApiKeyConfigured) {
+        throw Exception('請先在 Gemini Service 中設定您的 API Key');
+      }
+      
+      // 構建情緒分析的提示詞
+      final prompt = '''
+請對以下對話內容進行情緒分析，重點關注用戶 "$currentUser" 和對話參與者的情緒狀態：
+
+對話內容：
+$conversationContext
+
+請提供詳細的情緒分析，包括：
+1. 整體對話氛圍（積極/消極/中性）
+2. 主要參與者的情緒狀態
+3. 情緒變化趨勢
+4. 需要注意的情緒信號
+5. 建議的溝通方式
+
+請用繁體中文回應，分析要具體且有建設性：
+''';
+      
+      // 使用 Gemini 生成情緒分析
+      final analysis = await _geminiService.sendMessage(prompt);
+      
+      debugPrint('[ChatService] ✅ 成功生成情緒分析: ${analysis.substring(0, analysis.length > 50 ? 50 : analysis.length)}...');
+      return analysis.trim();
+      
+    } catch (e) {
+      debugPrint('❌ [ChatService] 生成情緒分析失敗: $e');
+      throw Exception('生成情緒分析失敗: $e');
+    }
+  }
+  
+  /// 分析訊息情緒
+  Future<String> analyzeMessageEmotion(String message) async {
+    try {
+      // 使用前端 Gemini Service
+      final emotion = await _geminiService.analyzeEmotion(message);
+      return emotion;
+    } catch (e) {
+      debugPrint('[ChatService] 分析情緒失敗: $e');
+      return '分析情緒時發生錯誤：$e';
+    }
+  }
+  
+  /// 獲取智能回覆建議
+  Future<List<String>> getSuggestedReplies(String lastMessage) async {
+    try {
+      // 使用前端 Gemini Service
+      return await _geminiService.getSuggestedReplies(lastMessage);
+    } catch (e) {
+      debugPrint('[ChatService] 獲取回覆建議失敗: $e');
+      return ['好的', '了解', '謝謝'];
+    }
+  }
+  
+  /// 檢查 AI 服務是否可用
+  bool get isAIServiceAvailable => _geminiService.isApiKeyConfigured;
+  
+  // ===== AI 功能結束 =====
   
   /// 發送圖片消息
   /// 使用 HTTP 上傳圖片，然後通過 WebSocket 發送包含圖片 URL 的消息
