@@ -306,7 +306,7 @@ class _BleScanBodyState extends State<BleScanBody> {
 
             return AlertDialog(
               title: const Text('用戶資料'),
-              content: Container(
+              content: SizedBox(
                 width: double.maxFinite,
                 child: isLoading
                     ? const Column(
