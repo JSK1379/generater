@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'chat_service_singleton.dart';
 import 'user_api_service.dart';
 import 'api_config.dart';
+import 'user_login_page.dart';
 
 class UserIdSetupPage extends StatefulWidget {
   const UserIdSetupPage({super.key});
@@ -14,8 +15,21 @@ class UserIdSetupPage extends StatefulWidget {
 class _UserIdSetupPageState extends State<UserIdSetupPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final FocusNode _emailFocusNode = FocusNode();
+  final FocusNode _passwordFocusNode = FocusNode();
   bool _isLoading = false;
   bool _obscurePassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // 只在頁面初始化時清除一次焦點，之後允許正常的用戶交互
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        FocusScope.of(context).unfocus();
+      }
+    });
+  }
 
   Future<void> _registerWithEmail() async {
     final email = _emailController.text.trim();
@@ -47,7 +61,7 @@ class _UserIdSetupPageState extends State<UserIdSetupPage> {
       if (userId == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('註冊失敗，請檢查郵件地址和密碼')),
+            const SnackBar(content: Text('該郵件地址已被註冊，請登入')),
           );
         }
         setState(() {
@@ -103,6 +117,51 @@ class _UserIdSetupPageState extends State<UserIdSetupPage> {
       appBar: AppBar(
         title: const Text('用戶註冊'),
         automaticallyImplyLeading: false,
+        actions: [
+          TextButton(
+            onPressed: () async {
+              // 導航到登入頁面
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const UserLoginPage(),
+                ),
+              );
+              
+              // 從登入頁面返回後，只執行一次焦點清除
+              if (mounted) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) {
+                    FocusScope.of(context).unfocus();
+                  }
+                });
+              }
+              
+              // 如果登入成功，關閉註冊頁面
+              if (result == true && mounted) {
+                if (context.mounted) {
+                  Navigator.of(context).pop(true);
+                }
+              }
+            },
+            style: TextButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(6),
+              ),
+            ),
+            child: const Text(
+              '登入',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       resizeToAvoidBottomInset: true, // 確保頁面會根據鍵盤調整
       body: SafeArea(
@@ -134,7 +193,9 @@ class _UserIdSetupPageState extends State<UserIdSetupPage> {
                   const SizedBox(height: 32),
                   TextField(
                     controller: _emailController,
+                    focusNode: _emailFocusNode,
                     keyboardType: TextInputType.emailAddress,
+                    autofocus: false,
                     decoration: const InputDecoration(
                       labelText: '郵件地址',
                       border: OutlineInputBorder(),
@@ -144,7 +205,9 @@ class _UserIdSetupPageState extends State<UserIdSetupPage> {
                   const SizedBox(height: 16),
                   TextField(
                     controller: _passwordController,
+                    focusNode: _passwordFocusNode,
                     obscureText: _obscurePassword,
+                    autofocus: false,
                     decoration: InputDecoration(
                       labelText: '密碼',
                       border: const OutlineInputBorder(),
@@ -183,6 +246,8 @@ class _UserIdSetupPageState extends State<UserIdSetupPage> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
   }
 }
