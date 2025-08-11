@@ -6,6 +6,8 @@ import 'dart:typed_data';
 import 'dart:async';
 import 'chat_service_singleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'api_config.dart';
+import 'user_api_service.dart';
 
 class BleScanBody extends StatefulWidget {
   const BleScanBody({super.key});
@@ -20,6 +22,7 @@ class _BleScanBodyState extends State<BleScanBody> {
   BluetoothDevice? _connectedDevice;
   final Set<int> _expandedIndexes = {};
   String _currentUserId = ''; // 新增當前用戶 ID 變數
+  late UserApiService _userApiService; // 用戶 API 服務
 
   StreamSubscription<BluetoothAdapterState>? _adapterStateSubscription;
   StreamSubscription<List<ScanResult>>? _scanResultsSubscription;
@@ -27,6 +30,7 @@ class _BleScanBodyState extends State<BleScanBody> {
   @override
   void initState() {
     super.initState();
+    _userApiService = UserApiService(ApiConfig.baseUrl); // 初始化 API 服務
     _loadCurrentUserId(); // 載入當前用戶 ID
     // 添加連接回應監聽器
     ChatServiceSingleton.instance.addConnectResponseListener(_onConnectResponse);
@@ -104,53 +108,32 @@ class _BleScanBodyState extends State<BleScanBody> {
     final scanResult = _scanResults.firstWhere((result) => result.device.remoteId == device.remoteId);
     final connectionInfo = _extractDeviceInfo(scanResult);
 
-    // 顯示提示窗，詢問用戶是否要連接
-    final shouldConnect = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) => AlertDialog(
-        title: const Text('是否要連接對方？'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('暱稱: ${connectionInfo['nickname']}'),
-            if (connectionInfo['userId']!.isNotEmpty)
-              Text('用戶ID: ${connectionInfo['userId']}')
-            else
-              Text('裝置ID: ${connectionInfo['deviceId']}'),
-            Text('信號強度: ${connectionInfo['rssi']}'),
-            if (connectionInfo['imageId']!.isNotEmpty)
-              Text('圖片ID: ${connectionInfo['imageId']}'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
+    // 優先使用 userId，如果沒有則回退到 deviceId
+    final otherUserId = connectionInfo['userId']!.isNotEmpty 
+        ? connectionInfo['userId']! 
+        : connectionInfo['deviceId']!;
+
+    if (otherUserId.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('無法取得對方的用戶ID'),
+            backgroundColor: Colors.red,
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('連接'),
-          ),
-        ],
-      ),
-    );
+        );
+      }
+      return;
+    }
+
+    // 顯示用戶資料對話框
+    final shouldConnect = await _showUserProfileDialog(otherUserId, connectionInfo);
     if (shouldConnect != true) {
-      // 用戶取消連接
       return;
     }
 
     if (!mounted) return;
     final chatService = ChatServiceSingleton.instance;
     final currentUserId = await chatService.getCurrentUserId();
-    // 優先使用 userId，如果沒有則回退到 deviceId
-    final otherUserId = connectionInfo['userId']!.isNotEmpty 
-        ? connectionInfo['userId']! 
-        : connectionInfo['deviceId']!;
-    // final roomId = chatService.generateRoomId(currentUserId, otherUserId); // 已移除未使用變數
-
-    // 儲存聊天室歷史（僅在成功建立聊天室時再儲存）
 
     // 發送連線請求，使用 userId
     chatService.sendConnectRequest(currentUserId, otherUserId);
@@ -288,6 +271,202 @@ class _BleScanBodyState extends State<BleScanBody> {
           );
         }
       });
+    }
+  }
+
+  // 顯示用戶資料對話框
+  Future<bool?> _showUserProfileDialog(String userId, Map<String, String> connectionInfo) async {
+    // 首先嘗試從服務器獲取用戶資料
+    Map<String, dynamic>? userProfile;
+    bool isLoading = true;
+    
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            // 如果還在載入且還沒開始請求，開始請求
+            if (isLoading && userProfile == null) {
+              _fetchUserProfile(userId).then((profile) {
+                if (context.mounted) {
+                  setState(() {
+                    userProfile = profile;
+                    isLoading = false;
+                  });
+                }
+              }).catchError((error) {
+                if (context.mounted) {
+                  setState(() {
+                    isLoading = false;
+                  });
+                }
+              });
+            }
+
+            return AlertDialog(
+              title: const Text('用戶資料'),
+              content: Container(
+                width: double.maxFinite,
+                child: isLoading
+                    ? const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 16),
+                          Text('載入用戶資料中...'),
+                        ],
+                      )
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          // 暱稱
+                          Text(
+                            userProfile?['nickname'] ?? connectionInfo['nickname'] ?? '未知用戶',
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // 性別
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.person, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                _getGenderText(userProfile?['gender']),
+                                style: const TextStyle(fontSize: 16),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          
+                          // 年齡
+                          if (userProfile?['age'] != null) ...[
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.cake, size: 20),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '${userProfile!['age']} 歲',
+                                  style: const TextStyle(fontSize: 16),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                          
+                          // 頭像
+                          CircleAvatar(
+                            radius: 50,
+                            backgroundImage: userProfile?['avatar_url'] != null && 
+                                             userProfile!['avatar_url'].toString().isNotEmpty
+                                ? NetworkImage(userProfile!['avatar_url'])
+                                : null,
+                            child: userProfile?['avatar_url'] == null || 
+                                   userProfile!['avatar_url'].toString().isEmpty
+                                ? const Icon(Icons.person, size: 50)
+                                : null,
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // 興趣
+                          if (userProfile?['hobbies'] != null && 
+                              (userProfile!['hobbies'] as List).isNotEmpty) ...[
+                            const Text(
+                              '興趣愛好',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: (userProfile!['hobbies'] as List)
+                                  .map((hobby) => Chip(
+                                        label: Text(
+                                          hobby['name'] ?? '未知',
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                        backgroundColor: Colors.blue[100],
+                                      ))
+                                  .toList(),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                          
+                          // 如果有自定義興趣描述
+                          if (userProfile?['custom_hobby_description'] != null &&
+                              userProfile!['custom_hobby_description'].toString().isNotEmpty) ...[
+                            Text(
+                              '其他興趣: ${userProfile!['custom_hobby_description']}',
+                              style: const TextStyle(fontSize: 14, fontStyle: FontStyle.italic),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                        ],
+                      ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('取消'),
+                ),
+                ElevatedButton(
+                  onPressed: isLoading ? null : () => Navigator.of(context).pop(true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('確定連接'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // 獲取用戶資料
+  Future<Map<String, dynamic>?> _fetchUserProfile(String userId) async {
+    try {
+      debugPrint('[BLE] 開始獲取用戶資料: $userId');
+      
+      // 使用 UserApiService 獲取用戶資料
+      final userProfile = await _userApiService.getUserProfile(userId);
+      
+      if (userProfile != null) {
+        debugPrint('[BLE] 成功獲取用戶資料: $userProfile');
+        return userProfile;
+      } else {
+        debugPrint('[BLE] 獲取用戶資料失敗');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('[BLE] 獲取用戶資料錯誤: $e');
+      return null;
+    }
+  }
+
+  // 獲取性別文字
+  String _getGenderText(String? gender) {
+    switch (gender) {
+      case 'male':
+        return '男性';
+      case 'female':
+        return '女性';
+      case 'other':
+        return '其他';
+      default:
+        return '未設定';
     }
   }
 

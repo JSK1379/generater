@@ -132,6 +132,39 @@ class UserApiService {
     }
   }
   
+  // 獲取用戶資料
+  Future<Map<String, dynamic>?> getUserProfile(String userId) async {
+    try {
+      debugPrint('[UserApiService] 開始獲取用戶資料: $userId');
+      
+      // 確保 URL 正確拼接
+      final cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
+      final uri = Uri.parse('${cleanBaseUrl}users/$userId');
+      
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 10));
+      
+      debugPrint('[UserApiService] 用戶資料回應狀態: ${response.statusCode}');
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        debugPrint('[UserApiService] 成功獲取用戶資料: $data');
+        return data;
+      } else {
+        debugPrint('[UserApiService] 獲取用戶資料失敗: ${response.statusCode} - ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('[UserApiService] 獲取用戶資料錯誤: $e');
+      return null;
+    }
+  }
+  
   // 獲取好友列表
   Future<List<Map<String, dynamic>>?> getFriends(String userId) async {
     try {
