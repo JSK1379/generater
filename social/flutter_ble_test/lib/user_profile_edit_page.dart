@@ -28,6 +28,7 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
   final TextEditingController _nicknameController = TextEditingController();
   final TextEditingController _ageController = TextEditingController();
   final TextEditingController _locationController = TextEditingController();
+  final TextEditingController _customHobbyController = TextEditingController();
   
   String _selectedGender = 'male';
   List<int> _selectedHobbyIds = [];
@@ -35,6 +36,7 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
   bool _isLoading = false;
   bool _isLoadingProfile = true;
   bool _isAvatarProcessing = false; // 追蹤頭像是否正在處理中
+  bool _showCustomHobbyInput = false; // 控制自定義興趣輸入框顯示
   
   // 頭貼相關變數
   ImageProvider? _avatarImageProvider;
@@ -54,6 +56,7 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
     {'id': 8, 'name': '電影', 'description': '看電影'},
     {'id': 9, 'name': '遊戲', 'description': '玩電子遊戲'},
     {'id': 10, 'name': '繪畫', 'description': '藝術創作'},
+    {'id': 11, 'name': '其他', 'description': ''},
   ];
 
   @override
@@ -70,6 +73,7 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
     _nicknameController.dispose();
     _ageController.dispose();
     _locationController.dispose();
+    _customHobbyController.dispose();
     super.dispose();
   }
 
@@ -134,6 +138,14 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
             _selectedHobbyIds = (data['hobbies'] as List)
                 .map((hobby) => hobby['id'] as int)
                 .toList();
+            
+            // 檢查是否包含「其他」興趣，並載入自定義描述
+            if (_selectedHobbyIds.contains(11)) {
+              _showCustomHobbyInput = true;
+              if (data['custom_hobby_description'] != null) {
+                _customHobbyController.text = data['custom_hobby_description'].toString();
+              }
+            }
           }
           
           _isLoadingProfile = false;
@@ -348,6 +360,11 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
         'gender': _selectedGender,
         'hobby_ids': _selectedHobbyIds,
       };
+      
+      // 如果選擇了「其他」興趣，包含自定義描述
+      if (_selectedHobbyIds.contains(11) && _customHobbyController.text.trim().isNotEmpty) {
+        profileData['custom_hobby_description'] = _customHobbyController.text.trim();
+      }
       
       // 只在有值時才加入年齡和地點
       if (_ageController.text.trim().isNotEmpty) {
@@ -953,8 +970,17 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
                         setState(() {
                           if (selected) {
                             _selectedHobbyIds.add(hobby['id']);
+                            // 如果選擇的是「其他」選項，顯示輸入框
+                            if (hobby['id'] == 11) {
+                              _showCustomHobbyInput = true;
+                            }
                           } else {
                             _selectedHobbyIds.remove(hobby['id']);
+                            // 如果取消選擇「其他」選項，隱藏輸入框並清空內容
+                            if (hobby['id'] == 11) {
+                              _showCustomHobbyInput = false;
+                              _customHobbyController.clear();
+                            }
                           }
                         });
                       },
@@ -964,6 +990,30 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
                     );
                   }).toList(),
                 ),
+                
+                // 自定義興趣輸入框（只在選擇「其他」時顯示）
+                if (_showCustomHobbyInput) ...[
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _customHobbyController,
+                    decoration: const InputDecoration(
+                      labelText: '請描述您的其他興趣',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.edit),
+                      hintText: '例如：收集模型、學習語言等',
+                    ),
+                    maxLength: 50,
+                    validator: (value) {
+                      // 只有在選擇了「其他」選項時才驗證
+                      if (_selectedHobbyIds.contains(11)) {
+                        if (value == null || value.trim().isEmpty) {
+                          return '請描述您的其他興趣';
+                        }
+                      }
+                      return null;
+                    },
+                  ),
+                ],
                 const SizedBox(height: 24),
 
                 // 儲存按鈕
