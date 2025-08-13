@@ -346,9 +346,14 @@ class EnhancedLocationForegroundService : Service() {
             
             // 如果間隔異常，記錄警告
             val expectedInterval = intervalSeconds.toDouble()
-            val tolerance = expectedInterval * 0.3 // 允許30%的誤差
+            // 對於短間隔使用更寬鬆的容差，考慮系統調度延遲
+            val tolerance = if (expectedInterval <= 10) {
+                maxOf(expectedInterval * 0.8, 5.0) // 短間隔至少給5秒容差
+            } else {
+                expectedInterval * 0.3 // 長間隔維持30%容差
+            }
             if (actualInterval > expectedInterval + tolerance) {
-                Log.w(TAG, "⚠️ 間隔異常: 實際${String.format("%.1f", actualInterval)}秒 > 預期${expectedInterval}秒+${String.format("%.1f", tolerance)}秒")
+                Log.w(TAG, "! 間隔異常: 實際${String.format("%.1f", actualInterval)}秒 > 預期${expectedInterval}秒+${String.format("%.1f", tolerance)}秒")
             }
         }
         
