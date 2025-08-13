@@ -61,6 +61,11 @@ class _AvatarPageState extends State<AvatarPage> {
     }
     setState(() {});
     // 通知外部頁面刷新（可用 Provider/InheritWidget 改進）
+    
+    // 頭像套用完成後跳回用戶資料編輯頁面
+    if (mounted) {
+      Navigator.pop(context);
+    }
   }
 
   Future<void> _generateAvatar() async {
