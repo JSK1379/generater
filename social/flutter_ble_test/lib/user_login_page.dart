@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'user_api_service.dart';
+import 'api_config.dart';
+import 'chat_service_singleton.dart';
 
 class UserLoginPage extends StatefulWidget {
   const UserLoginPage({super.key});
@@ -13,10 +16,12 @@ class _UserLoginPageState extends State<UserLoginPage> {
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _obscurePassword = true;
+  late UserApiService _userApiService;
 
   @override
   void initState() {
     super.initState();
+    _userApiService = UserApiService(ApiConfig.baseUrl);
     // 立即清除焦點，防止自動彈出鍵盤
     Future.microtask(() {
       if (mounted) {
@@ -48,22 +53,32 @@ class _UserLoginPageState extends State<UserLoginPage> {
     });
 
     try {
-      // TODO: 實作登入 API 調用
-      // 目前先模擬登入成功，實際需要添加到 UserApiService
+      // 調用登入 API
+      final userId = await _userApiService.loginUser(email, password);
       
-      // 模擬網路延遲
-      await Future.delayed(const Duration(seconds: 2));
-      
-      // 暫時使用郵件作為用戶 ID（實際應該從服務器獲取）
-      final userId = email.split('@')[0]; // 簡單提取用戶名作為 ID
-      
-      // 保存用戶 ID 到本地存儲
+      if (userId == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('登入失敗，請稍後重試')),
+          );
+        }
+        return;
+      }
+
+      // 保存用戶資訊到本地
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('user_id', userId);
-      await prefs.setString('email', email);
+      await prefs.setString('user_email', email);
       
-      // 登入成功，聊天服務會在需要時自動連接
-      
+      // 初始化 WebSocket 連接
+      try {
+        final chatService = ChatServiceSingleton.instance;
+        final wsUrl = ApiConfig.wsUrl;
+        await chatService.connect(wsUrl, '', userId);
+      } catch (e) {
+        // WebSocket 連接失敗不阻止登入成功
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -75,8 +90,24 @@ class _UserLoginPageState extends State<UserLoginPage> {
       }
     } catch (e) {
       if (mounted) {
+        String errorMessage = '網路錯誤，請檢查網路連線';
+        
+        // 根據錯誤類型顯示不同的提示
+        if (e.toString().contains('EMAIL_NOT_EXISTS')) {
+          errorMessage = '該郵箱地址尚未註冊，請先註冊帳號';
+        } else if (e.toString().contains('WRONG_PASSWORD')) {
+          errorMessage = '密碼錯誤，請檢查密碼是否正確';
+        } else if (e.toString().contains('LOGIN_FAILED')) {
+          errorMessage = '登入失敗，請稍後重試';
+        } else if (e.toString().contains('NETWORK_ERROR')) {
+          errorMessage = '網路連線失敗，請檢查網路設定';
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('登入失敗: $e')),
+          SnackBar(
+            content: Text(errorMessage),
+            duration: const Duration(seconds: 4),
+          ),
         );
       }
     } finally {

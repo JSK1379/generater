@@ -409,5 +409,56 @@ class UserApiService {
     }
   }
 
+  /// 用戶登入
+  Future<String?> loginUser(String email, String password) async {
+    try {
+      final cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
+      final uri = Uri.parse('${cleanBaseUrl}users/login');
+      
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email,
+          'password': password,
+        }),
+      );
+      
+      debugPrint('[UserApiService] 登入回應狀態碼: ${response.statusCode}');
+      debugPrint('[UserApiService] 登入回應內容: ${response.body}');
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final userIdRaw = data['userId'] ?? data['user_id'] ?? data['id'];
+        final userId = userIdRaw?.toString();
+        debugPrint('[UserApiService] 登入成功: email=$email, userId=$userId');
+        return userId;
+      } else {
+        // 處理不同的錯誤狀態碼
+        final errorData = jsonDecode(response.body);
+        final errorMessage = errorData['detail'] ?? '登入失敗';
+        
+        if (response.statusCode == 404) {
+          debugPrint('[UserApiService] 登入失敗: 郵箱不存在');
+          throw Exception('EMAIL_NOT_EXISTS:$errorMessage');
+        } else if (response.statusCode == 401) {
+          debugPrint('[UserApiService] 登入失敗: 密碼錯誤');
+          throw Exception('WRONG_PASSWORD:$errorMessage');
+        } else {
+          debugPrint('[UserApiService] 登入失敗: ${response.statusCode}, $errorMessage');
+          throw Exception('LOGIN_FAILED:$errorMessage');
+        }
+      }
+    } catch (e) {
+      if (e.toString().contains('EMAIL_NOT_EXISTS') || 
+          e.toString().contains('WRONG_PASSWORD') || 
+          e.toString().contains('LOGIN_FAILED')) {
+        rethrow;
+      }
+      debugPrint('[UserApiService] 登入網路錯誤: $e');
+      throw Exception('NETWORK_ERROR:網路連線失敗，請檢查網路設定');
+    }
+  }
+
   void dispose() {}
 }
