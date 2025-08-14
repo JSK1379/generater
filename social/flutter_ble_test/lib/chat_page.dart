@@ -570,15 +570,6 @@ class _ChatPageState extends State<ChatPage> {
   void _generateReplySuggestion() async {
     Navigator.pop(context); // 關閉底部彈窗
     
-    // 取得最近的幾條訊息作為上下文
-    final messages = widget.chatService.getMessagesForRoom(widget.roomId);
-    if (messages.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('沒有對話內容可以分析')),
-      );
-      return;
-    }
-    
     // 顯示載入中
     showDialog(
       context: context,

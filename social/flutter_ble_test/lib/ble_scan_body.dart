@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'dart:async';
 import 'chat_service_singleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -23,6 +22,7 @@ class _BleScanBodyState extends State<BleScanBody> {
   final Set<int> _expandedIndexes = {};
   String _currentUserId = ''; // 新增當前用戶 ID 變數
   late UserApiService _userApiService; // 用戶 API 服務
+  final Map<String, String> _deviceStableNames = {}; // 記錄裝置的穩定名稱
 
   StreamSubscription<BluetoothAdapterState>? _adapterStateSubscription;
   StreamSubscription<List<ScanResult>>? _scanResultsSubscription;
@@ -88,6 +88,8 @@ class _BleScanBodyState extends State<BleScanBody> {
     if (mounted) {
       setState(() => _isScanning = true);
     }
+    // 清空裝置穩定名稱快取，允許重新掃描時更新名稱
+    _deviceStableNames.clear();
     await FlutterBluePlus.startScan();
     Future.delayed(const Duration(seconds: 1), () async {
       if (mounted && _isScanning) {
@@ -141,6 +143,59 @@ class _BleScanBodyState extends State<BleScanBody> {
 
     // 等待 connect_response 由監聽器處理自動進聊天室或顯示被拒絕提示
     // 這裡不再直接進聊天室
+  }
+  
+  // 獲取裝置的穩定顯示名稱，避免反覆橫跳
+  String _getStableDeviceName(ScanResult scanResult) {
+    final deviceId = scanResult.device.remoteId.str;
+    
+    // 如果已經有穩定名稱，直接返回
+    if (_deviceStableNames.containsKey(deviceId)) {
+      return _deviceStableNames[deviceId]!;
+    }
+    
+    // 嘗試從 manufacturer data 解析暱稱
+    String? nicknameFromManufacturer;
+    final mdata = scanResult.advertisementData.manufacturerData;
+    
+    // 先解析 0x1236 (userId 格式)
+    if (mdata.containsKey(0x1236)) {
+      final bytes = mdata[0x1236]!;
+      if (bytes.length > 7 && bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x55) {
+        try {
+          final nameLen = bytes[4];
+          if (bytes.length >= 5 + nameLen) {
+            final nameBytes = bytes.sublist(5, 5 + nameLen);
+            nicknameFromManufacturer = utf8.decode(nameBytes, allowMalformed: true);
+          }
+        } catch (_) {}
+      }
+    }
+    
+    // fallback 舊格式 0x1234
+    if ((nicknameFromManufacturer == null || nicknameFromManufacturer.isEmpty) && mdata.containsKey(0x1234)) {
+      final bytes = mdata[0x1234]!;
+      if (bytes.length > 5 && bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x41) {
+        try {
+          final nameLen = bytes[4];
+          if (bytes.length >= 6 + nameLen) {
+            final nameBytes = bytes.sublist(5, 5 + nameLen);
+            nicknameFromManufacturer = utf8.decode(nameBytes, allowMalformed: true);
+          }
+        } catch (_) {}
+      }
+    }
+    
+    // 決定最終名稱
+    final finalName = nicknameFromManufacturer?.isNotEmpty == true
+        ? nicknameFromManufacturer!
+        : (scanResult.advertisementData.advName.isNotEmpty 
+           ? scanResult.advertisementData.advName 
+           : scanResult.device.platformName);
+    
+    // 記錄穩定名稱
+    _deviceStableNames[deviceId] = finalName;
+    return finalName;
   }
   
   Map<String, String> _extractDeviceInfo(ScanResult scanResult) {
@@ -213,28 +268,6 @@ class _BleScanBodyState extends State<BleScanBody> {
         _connectedDevice = null;
       });
     }
-  }
-
-  Widget _buildAvatarFromManufacturer(Map<int, List<int>> manufacturerData) {
-    if (manufacturerData.containsKey(0x1234)) {
-      final bytes = manufacturerData[0x1234]!;
-      if (bytes.length > 6 &&
-          bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x41) {
-        final nameLen = bytes[4];
-        if (bytes.length >= 6 + nameLen) {
-          final avatarLen = bytes[5 + nameLen];
-          if (avatarLen > 0 && bytes.length >= 6 + nameLen + avatarLen) {
-            final avatarBytes = bytes.sublist(6 + nameLen, 6 + nameLen + avatarLen);
-            try {
-              return CircleAvatar(radius: 20, backgroundImage: MemoryImage(Uint8List.fromList(avatarBytes)));
-            } catch (e) {
-              return const CircleAvatar(radius: 20, child: Icon(Icons.error));
-            }
-          }
-        }
-      }
-    }
-    return const CircleAvatar(radius: 20, child: Icon(Icons.person));
   }
 
   // ...已移除未使用的 _saveChatRoomHistory 方法...
@@ -516,37 +549,12 @@ class _BleScanBodyState extends State<BleScanBody> {
                 itemBuilder: (_, i) {
                   final filteredResults = _scanResults.where((r) => r.advertisementData.advName.isNotEmpty || r.device.platformName.isNotEmpty).toList();
                   final r = filteredResults[i];
-                  String? nicknameFromManufacturer;
+                  
+                  // 使用穩定的名稱函數
+                  final name = _getStableDeviceName(r);
+                  
+                  // 檢查是否為同一個 APP
                   final mdata = r.advertisementData.manufacturerData;
-                  // 先解析 0x1236 (userId 格式)
-                  if (mdata.containsKey(0x1236)) {
-                    final bytes = mdata[0x1236]!;
-                    if (bytes.length > 7 && bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x55) {
-                      try {
-                        final nameLen = bytes[4];
-                        if (bytes.length >= 5 + nameLen) {
-                          final nameBytes = bytes.sublist(5, 5 + nameLen);
-                          nicknameFromManufacturer = utf8.decode(nameBytes, allowMalformed: true);
-                        }
-                      } catch (_) {}
-                    }
-                  }
-                  // fallback 舊格式 0x1234
-                  if ((nicknameFromManufacturer == null || nicknameFromManufacturer.isEmpty) && mdata.containsKey(0x1234)) {
-                    final bytes = mdata[0x1234]!;
-                    if (bytes.length > 5 && bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x41) {
-                      try {
-                        final nameLen = bytes[4];
-                        if (bytes.length >= 6 + nameLen) {
-                          final nameBytes = bytes.sublist(5, 5 + nameLen);
-                          nicknameFromManufacturer = utf8.decode(nameBytes, allowMalformed: true);
-                        }
-                      } catch (_) {}
-                    }
-                  }
-                  final name = nicknameFromManufacturer?.isNotEmpty == true
-                      ? nicknameFromManufacturer!
-                      : (r.advertisementData.advName.isNotEmpty ? r.advertisementData.advName : r.device.platformName);
                   bool isSameApp = false;
                   if (mdata.containsKey(0x1236)) {
                     final bytes = mdata[0x1236]!;
@@ -583,8 +591,6 @@ class _BleScanBodyState extends State<BleScanBody> {
                           children: [
                             Row(
                               children: [
-                                _buildAvatarFromManufacturer(r.advertisementData.manufacturerData),
-                                const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
                                     displayName,
@@ -631,16 +637,18 @@ class _BleScanBodyState extends State<BleScanBody> {
                                     Builder(
                                       builder: (_) {
                                         final bytes = r.advertisementData.manufacturerData[0x1234]!;
+                                        String? parsedNickname;
                                         if (bytes.length > 5 &&
                                             bytes[0] == 0x42 && bytes[1] == 0x4C && bytes[2] == 0x45 && bytes[3] == 0x41) {
                                           try {
                                             final nameLen = bytes[4];
                                             if (bytes.length >= 6 + nameLen) {
-                                              // final nameBytes = bytes.sublist(5, 5 + nameLen);
+                                              final nameBytes = bytes.sublist(5, 5 + nameLen);
+                                              parsedNickname = utf8.decode(nameBytes, allowMalformed: true);
                                             }
                                           } catch (_) {}
                                         }
-                                        return Text('暱稱(解碼): ${(nicknameFromManufacturer != null && nicknameFromManufacturer.isNotEmpty) ? nicknameFromManufacturer : "(無)"}', style: const TextStyle(color: Colors.blue));
+                                        return Text('暱稱(解碼): ${(parsedNickname != null && parsedNickname.isNotEmpty) ? parsedNickname : "(無)"}', style: const TextStyle(color: Colors.blue));
                                       },
                                     ),
                                 ],
