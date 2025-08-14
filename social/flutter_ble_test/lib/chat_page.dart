@@ -4,6 +4,7 @@ import 'chat_service.dart';
 import 'chat_models.dart';
 import 'chat_room_open_manager.dart'; // 導入全局管理器
 import 'api_config.dart';
+import 'user_api_service.dart'; // 導入用戶 API 服務
 
 class ChatPage extends StatefulWidget {
   final String roomId;
@@ -26,6 +27,7 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  late UserApiService _userApiService; // 用戶 API 服務
   
   // 使用全局管理器
   final ChatRoomOpenManager _openManager = ChatRoomOpenManager();
@@ -46,6 +48,9 @@ class _ChatPageState extends State<ChatPage> {
   @override
   void initState() {
     super.initState();
+    
+    // 初始化用戶 API 服務
+    _userApiService = UserApiService(ApiConfig.baseUrl);
     
     // 設置滾動監聽器
     _scrollController.addListener(_onScroll);
@@ -488,6 +493,12 @@ class _ChatPageState extends State<ChatPage> {
                 onTap: () => _generateChatSummary(),
               ),
               _buildAIOptionCard(
+                icon: Icons.person_search,
+                title: '個性化建議',
+                subtitle: '基於雙方資料建議',
+                onTap: () => _generatePersonalizedSuggestion(),
+              ),
+              _buildAIOptionCard(
                 icon: Icons.emoji_emotions,
                 title: '情緒分析',
                 subtitle: '分析訊息情緒',
@@ -748,6 +759,139 @@ class _ChatPageState extends State<ChatPage> {
           SnackBar(content: Text('生成總結失敗：$e')),
         );
       }
+    }
+  }
+  
+  // 生成個性化建議
+  void _generatePersonalizedSuggestion() async {
+    Navigator.pop(context); // 關閉底部彈窗
+    
+    // 顯示載入中
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('🤖 AI 正在分析雙方資料並生成個性化建議...'),
+          ],
+        ),
+      ),
+    );
+    
+    try {
+      // 使用房間ID提取雙方用戶ID (格式: room_user1_user2)
+      final roomParts = widget.roomId.split('_');
+      String otherUserId = '';
+      if (roomParts.length >= 3) {
+        final user1 = roomParts[1];
+        final user2 = roomParts[2];
+        otherUserId = (user1 == widget.currentUser) ? user2 : user1;
+      }
+      
+      // 並行獲取雙方用戶資料
+      final currentUserProfile = await _userApiService.getUserProfile(widget.currentUser);
+      final otherUserProfile = await _userApiService.getUserProfile(otherUserId);
+      
+      // 獲取對話歷史
+      final messages = widget.chatService.getMessagesForRoom(widget.roomId);
+      final conversationHistory = messages
+          .take(10) // 取最近10條訊息作為參考
+          .map((msg) => '${msg.sender}: ${msg.content}')
+          .join('\n');
+      
+      // 構建詳細的用戶資料描述
+      String currentUserInfo = _buildUserInfoString(currentUserProfile, '當前用戶');
+      String otherUserInfo = _buildUserInfoString(otherUserProfile, '對方用戶');
+      
+      // 構建包含雙方資料和對話歷史的提示
+      final prompt = '''
+請基於以下詳細資料為聊天提供個性化建議：
+
+=== 用戶資料 ===
+$currentUserInfo
+
+$otherUserInfo
+
+=== 最近對話記錄 ===
+$conversationHistory
+
+=== 請提供以下建議 ===
+1. 基於雙方的興趣愛好、年齡和背景，推薦3-5個有趣且合適的話題
+2. 分析當前對話氛圍並建議如何保持良好互動
+3. 根據對方的興趣，推薦一些個性化的回覆方式或問題
+4. 建議適合雙方的見面活動或深入交流的方式
+5. 如果對話顯得冷淡，提供破冰或重新點燃興趣的方法
+
+請用友善、自然的語調回覆，確保建議實用且符合雙方的個性特點。
+''';
+      
+      // 發送給 AI 處理
+      await widget.chatService.sendAIMessage(widget.roomId, prompt);
+      
+      if (mounted) {
+        Navigator.pop(context); // 關閉載入對話框
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✨ AI 已基於雙方資料生成個性化建議，請查看聊天訊息'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+      
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // 關閉載入對話框
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('生成個性化建議失敗：$e')),
+        );
+      }
+    }
+  }
+  
+  // 構建用戶資料字符串
+  String _buildUserInfoString(Map<String, dynamic>? userProfile, String label) {
+    if (userProfile == null) {
+      return '$label: 資料獲取失敗';
+    }
+    
+    final nickname = userProfile['nickname'] ?? '未知';
+    final age = userProfile['age']?.toString() ?? '未知';
+    final gender = _getGenderText(userProfile['gender']);
+    
+    String info = '$label: $nickname (年齡: $age, 性別: $gender)';
+    
+    // 添加興趣愛好
+    if (userProfile['hobbies'] != null && (userProfile['hobbies'] as List).isNotEmpty) {
+      final hobbies = (userProfile['hobbies'] as List)
+          .map((hobby) => hobby['name'] ?? '未知')
+          .join(', ');
+      info += '\n興趣愛好: $hobbies';
+    }
+    
+    // 添加自定義興趣描述
+    if (userProfile['custom_hobby_description'] != null &&
+        userProfile['custom_hobby_description'].toString().isNotEmpty) {
+      info += '\n其他興趣: ${userProfile['custom_hobby_description']}';
+    }
+    
+    return info;
+  }
+  
+  // 獲取性別文字
+  String _getGenderText(String? gender) {
+    switch (gender) {
+      case 'male':
+        return '男性';
+      case 'female':
+        return '女性';
+      case 'other':
+        return '其他';
+      default:
+        return '未設定';
     }
   }
   

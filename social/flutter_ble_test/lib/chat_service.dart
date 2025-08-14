@@ -798,10 +798,7 @@ class ChatService extends ChangeNotifier {
       }
       
       // 獲取聊天歷史作為上下文
-      final context = _buildContextFromHistory(roomId);
-      
-      // 顯示 AI 正在思考的訊息
-      await _sendAIResponse(roomId, '🤖 AI 正在思考中...');
+      final context = await _buildContextFromHistory(roomId);
       
       // 🔄 使用前端 Gemini Service 而不是後端 API
       final aiResponse = await _geminiService.sendMessage(
@@ -812,22 +809,51 @@ class ChatService extends ChangeNotifier {
       
       // 處理 AI 回應
       if (aiResponse.isNotEmpty) {
-        // 替換掉"正在思考"的訊息，發送真正的 AI 回應
-        await _replaceLastAIMessage(roomId, aiResponse);
+        // 直接發送 AI 回應
+        await _sendAIResponse(roomId, aiResponse);
       } else {
         // 如果回應為空，顯示錯誤訊息
-        await _replaceLastAIMessage(roomId, '❌ AI 服務暫時無法使用，請稍後再試。');
+        await _sendAIResponse(roomId, '❌ AI 服務暫時無法使用，請稍後再試。');
       }
       
     } catch (e) {
       debugPrint('❌ [ChatService] AI 訊息發送失敗: $e');
-      await _replaceLastAIMessage(roomId, '❌ AI 服務發生錯誤：$e');
+      await _sendAIResponse(roomId, '❌ AI 服務發生錯誤：$e');
     }
   }
   
   /// 構建聊天歷史上下文
-  String _buildContextFromHistory(String roomId) {
+  Future<String> _buildContextFromHistory(String roomId) async {
     final messages = _getOrCreateRoomMessages(roomId);
+    
+    // 從房間 ID 中提取用戶 ID
+    final userIds = _extractUserIdsFromRoomId(roomId);
+    
+    // 獲取雙方用戶資料
+    String userContexts = '';
+    if (userIds.isNotEmpty) {
+      try {
+        final userProfiles = await Future.wait([
+          for (final userId in userIds) _userApiService.getUserProfile(userId)
+        ]);
+        
+        final userContextList = <String>[];
+        for (int i = 0; i < userIds.length && i < userProfiles.length; i++) {
+          final userId = userIds[i];
+          final profile = userProfiles[i];
+          if (profile != null) {
+            userContextList.add(_buildUserProfileContext(userId, profile));
+          }
+        }
+        
+        if (userContextList.isNotEmpty) {
+          userContexts = '聊天室參與者資料：\n${userContextList.join('\n\n')}\n\n';
+        }
+      } catch (e) {
+        debugPrint('[ChatService] 獲取用戶資料失敗: $e');
+        // 繼續處理，即使沒有用戶資料
+      }
+    }
     
     // 只取最近 5 條非 AI 訊息作為上下文
     final recentMessages = messages
@@ -836,9 +862,61 @@ class ChatService extends ChangeNotifier {
         .map((msg) => '${msg.sender}: ${msg.content}')
         .join('\n');
     
-    return recentMessages.isNotEmpty 
-        ? '這是一個聊天室對話，以下是最近的對話內容：\n$recentMessages'
+    final messageContext = recentMessages.isNotEmpty 
+        ? '最近的對話內容：\n$recentMessages'
         : '這是一個新的聊天室對話。';
+    
+    return '$userContexts$messageContext';
+  }
+  
+  // 從房間 ID 中提取用戶 ID
+  List<String> _extractUserIdsFromRoomId(String roomId) {
+    if (roomId.startsWith('room_')) {
+      final parts = roomId.substring(5).split('_'); // 移除 'room_' 前綴
+      if (parts.length >= 2) {
+        return [parts[0], parts[1]];
+      }
+    }
+    return [];
+  }
+  
+  // 構建用戶資料上下文
+  String _buildUserProfileContext(String userId, Map<String, dynamic> profile) {
+    final nickname = profile['nickname'] ?? userId;
+    final gender = _getGenderText(profile['gender']);
+    final age = profile['age'] != null ? '${profile['age']}歲' : '年齡未知';
+    
+    String context = '用戶 $nickname (ID: $userId)：\n- 性別：$gender\n- 年齡：$age';
+    
+    // 添加興趣愛好
+    if (profile['hobbies'] != null && (profile['hobbies'] as List).isNotEmpty) {
+      final hobbies = (profile['hobbies'] as List)
+          .map((hobby) => hobby['name'] ?? '未知')
+          .join('、');
+      context += '\n- 興趣愛好：$hobbies';
+    }
+    
+    // 添加自定義興趣描述
+    if (profile['custom_hobby_description'] != null &&
+        profile['custom_hobby_description'].toString().isNotEmpty) {
+      context += '\n- 其他興趣：${profile['custom_hobby_description']}';
+    }
+    
+    return context;
+  }
+  
+  // 獲取性別文字
+  String _getGenderText(String? gender) {
+    switch (gender) {
+      case 'male':
+        return '男性';
+      case 'female':
+        return '女性';
+      case 'other':
+        return '其他';
+      default:
+        return '未設定';
+    }
   }
   
   /// 發送 AI 回應訊息
@@ -866,35 +944,6 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
     
     debugPrint('[ChatService] 🤖 AI 回應已發送: ${response.substring(0, response.length > 50 ? 50 : response.length)}...');
-  }
-  
-  /// 替換最後一條 AI 訊息（用於替換"正在思考"的訊息）
-  Future<void> _replaceLastAIMessage(String roomId, String newContent) async {
-    final roomMessages = _getOrCreateRoomMessages(roomId);
-    
-    // 找到最後一條 AI 訊息
-    for (int i = roomMessages.length - 1; i >= 0; i--) {
-      if (roomMessages[i].sender == 'ai_assistant') {
-        // 更新訊息內容
-        final updatedMessage = ChatMessage(
-          id: roomMessages[i].id,
-          type: roomMessages[i].type,
-          content: newContent,
-          sender: roomMessages[i].sender,
-          timestamp: DateTime.now().toUtc(),
-          imageUrl: roomMessages[i].imageUrl,
-        );
-        
-        roomMessages[i] = updatedMessage;
-        
-        // 重新儲存到本地
-        await _saveMessageToLocalStorage(roomId, updatedMessage);
-        break;
-      }
-    }
-    
-    // 通知 UI 更新
-    notifyListeners();
   }
   
   /// 生成回覆建議
