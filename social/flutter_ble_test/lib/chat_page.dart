@@ -73,14 +73,12 @@ class _ChatPageState extends State<ChatPage> {
         // 初始化訊息數量和緩存
         _updateMessagesCache();
         
-        // 如果有訊息，初始捲動到底部
-        if (widget.chatService.messages.isNotEmpty) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              _scrollToBottom();
-            }
-          });
-        }
+        // 延遲滾動到底部，確保UI完全渲染完成
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted && widget.chatService.messages.isNotEmpty) {
+            _scrollToBottom();
+          }
+        });
       }
     });
   }
@@ -102,6 +100,15 @@ class _ChatPageState extends State<ChatPage> {
       _cachedMessages = List.from(currentMessages);
       _previousMessageCount = currentMessages.length;
     });
+    
+    // 如果有訊息，在下一幀滾動到底部
+    if (currentMessages.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _scrollToBottom();
+        }
+      });
+    }
   }
 
   Future<void> _connectToWebSocket() async {
@@ -215,7 +222,7 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  void _scrollToBottom() {
+  void _scrollToBottom({int retryCount = 0}) {
     // 防止重複滾動
     if (_isScrolling || !mounted || !_scrollController.hasClients) return;
     
@@ -223,9 +230,12 @@ class _ChatPageState extends State<ChatPage> {
     
     try {
       final maxExtent = _scrollController.position.maxScrollExtent;
+      debugPrint('[ChatPage] 滾動到底部: maxExtent=$maxExtent, currentPixels=${_scrollController.position.pixels}');
+      
       // 如果已經在底部，不需要滾動
       if ((_scrollController.position.pixels - maxExtent).abs() <= 1) {
         _isScrolling = false;
+        debugPrint('[ChatPage] 已經在底部，無需滾動');
         return;
       }
       
@@ -235,6 +245,22 @@ class _ChatPageState extends State<ChatPage> {
         curve: Curves.easeOut,
       ).then((_) {
         _isScrolling = false;
+        
+        // 驗證是否真正到達底部，如果沒有且重試次數少於3次，則再次嘗試
+        if (mounted && _scrollController.hasClients) {
+          final newMaxExtent = _scrollController.position.maxScrollExtent;
+          final currentPixels = _scrollController.position.pixels;
+          final isAtBottom = (currentPixels - newMaxExtent).abs() <= 1;
+          
+          debugPrint('[ChatPage] 滾動完成: newMaxExtent=$newMaxExtent, currentPixels=$currentPixels, isAtBottom=$isAtBottom');
+          
+          if (!isAtBottom && retryCount < 3) {
+            debugPrint('[ChatPage] 未到達底部，重試第${retryCount + 1}次');
+            Future.delayed(const Duration(milliseconds: 100), () {
+              _scrollToBottom(retryCount: retryCount + 1);
+            });
+          }
+        }
       }).catchError((e) {
         debugPrint('滾動到底部時出錯: $e');
         _isScrolling = false;
@@ -265,12 +291,6 @@ class _ChatPageState extends State<ChatPage> {
         widget.currentUser,
         text,
       );
-      
-      // 檢查是否需要觸發 AI 回應
-      if (widget.chatService.shouldTriggerAI(text)) {
-        // 異步發送 AI 訊息，不阻塞用戶界面
-        widget.chatService.sendAIMessage(widget.roomId, text);
-      }
       
       _messageController.clear();
       

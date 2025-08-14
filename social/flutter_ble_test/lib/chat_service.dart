@@ -769,17 +769,28 @@ class ChatService extends ChangeNotifier {
       'imageUrl': imageUrl, // 如果沒有圖片會是 null
     };
     
-    // 儲存訊息到本地儲存空間
-    await _saveMessageToLocalStorage(roomId, ChatMessage(
+    final messageObj = ChatMessage(
       id: messageId,
       type: 'text',
       content: content,
       sender: userId,
       timestamp: timestamp,
       imageUrl: imageUrl,
-    ));
+    );
+    
+    // 立即添加到當前房間的訊息列表（樂觀更新）
+    final roomMessages = _getOrCreateRoomMessages(roomId);
+    roomMessages.add(messageObj);
+    _processedMessages.add(messageId); // 記錄已處理的訊息，避免重複
+    
+    // 儲存訊息到本地儲存空間
+    await _saveMessageToLocalStorage(roomId, messageObj);
+    
+    // 立即更新UI
+    notifyListeners();
     
     debugPrint('ChatService: 發送聊天訊息到伺服器 - $message');
+    debugPrint('ChatService: 已立即添加訊息到房間 $roomId，內容: $content');
     _webSocketService.sendMessage(message);
   }
   
@@ -825,6 +836,16 @@ class ChatService extends ChangeNotifier {
   /// 構建聊天歷史上下文
   Future<String> _buildContextFromHistory(String roomId) async {
     final messages = _getOrCreateRoomMessages(roomId);
+    final currentUser = await getCurrentUserId();
+    
+    // 從房間ID提取對方用戶ID (格式: room_user1_user2)
+    String otherUserId = '';
+    final roomParts = roomId.split('_');
+    if (roomParts.length >= 3) {
+      final user1 = roomParts[1];
+      final user2 = roomParts[2];
+      otherUserId = (user1 == currentUser) ? user2 : user1;
+    }
     
     // 從房間 ID 中提取用戶 ID
     final userIds = _extractUserIdsFromRoomId(roomId);
@@ -842,7 +863,16 @@ class ChatService extends ChangeNotifier {
           final userId = userIds[i];
           final profile = userProfiles[i];
           if (profile != null) {
-            userContextList.add(_buildUserProfileContext(userId, profile));
+            // 使用"你"和"他"標識用戶
+            String userLabel;
+            if (userId == currentUser) {
+              userLabel = '你';
+            } else if (userId == otherUserId) {
+              userLabel = '他';
+            } else {
+              userLabel = '對方';
+            }
+            userContextList.add(_buildUserProfileContext(userLabel, profile));
           }
         }
         
@@ -859,7 +889,18 @@ class ChatService extends ChangeNotifier {
     final recentMessages = messages
         .where((msg) => !msg.sender.startsWith('ai_'))
         .take(5)
-        .map((msg) => '${msg.sender}: ${msg.content}')
+        .map((msg) {
+          // 將用戶ID轉換為"你"和"他"
+          String senderLabel;
+          if (msg.sender == currentUser) {
+            senderLabel = '你';
+          } else if (msg.sender == otherUserId) {
+            senderLabel = '他';
+          } else {
+            senderLabel = '對方'; // 備用，如果ID不匹配
+          }
+          return '$senderLabel: ${msg.content}';
+        })
         .join('\n');
     
     final messageContext = recentMessages.isNotEmpty 
@@ -881,12 +922,17 @@ class ChatService extends ChangeNotifier {
   }
   
   // 構建用戶資料上下文
-  String _buildUserProfileContext(String userId, Map<String, dynamic> profile) {
-    final nickname = profile['nickname'] ?? userId;
+  String _buildUserProfileContext(String userLabel, Map<String, dynamic> profile) {
+    final nickname = profile['nickname'] ?? '';
     final gender = _getGenderText(profile['gender']);
     final age = profile['age'] != null ? '${profile['age']}歲' : '年齡未知';
     
-    String context = '用戶 $nickname (ID: $userId)：\n- 性別：$gender\n- 年齡：$age';
+    String context = '$userLabel：\n- 性別：$gender\n- 年齡：$age';
+    
+    // 如果有暱稱且不同於標籤，則顯示暱稱
+    if (nickname.isNotEmpty && nickname != userLabel) {
+      context = '$userLabel（暱稱：$nickname）：\n- 性別：$gender\n- 年齡：$age';
+    }
     
     // 添加興趣愛好
     if (profile['hobbies'] != null && (profile['hobbies'] as List).isNotEmpty) {
@@ -1121,16 +1167,8 @@ $detailedContext
   
   /// 檢查訊息是否應該觸發 AI
   bool shouldTriggerAI(String message) {
-    // AI 觸發關鍵字
-    const aiTriggers = [
-      '@ai', '@AI', '@助手', '@機器人',
-      '請問', '幫我', '解釋', '說明',
-      '?', '？', 'help', 'Help'
-    ];
-    
-    return aiTriggers.any((trigger) => 
-      message.toLowerCase().contains(trigger.toLowerCase())
-    );
+    // AI 不再自動在聊天室中發送訊息，只提供生成和分析功能
+    return false;
   }
   
   /// 設定 AI 個性
@@ -1152,9 +1190,31 @@ $detailedContext
   /// 生成聊天總結
   Future<String> generateChatSummary(String roomId) async {
     final messages = _getOrCreateRoomMessages(roomId);
+    final currentUser = await getCurrentUserId();
+    
+    // 從房間ID提取對方用戶ID (格式: room_user1_user2)
+    String otherUserId = '';
+    final roomParts = roomId.split('_');
+    if (roomParts.length >= 3) {
+      final user1 = roomParts[1];
+      final user2 = roomParts[2];
+      otherUserId = (user1 == currentUser) ? user2 : user1;
+    }
+    
     final messageTexts = messages
         .where((msg) => !msg.sender.startsWith('ai_'))
-        .map((msg) => '${msg.sender}: ${msg.content}')
+        .map((msg) {
+          // 將用戶ID轉換為"你"和"他"
+          String senderLabel;
+          if (msg.sender == currentUser) {
+            senderLabel = '你';
+          } else if (msg.sender == otherUserId) {
+            senderLabel = '他';
+          } else {
+            senderLabel = '對方'; // 備用，如果ID不匹配
+          }
+          return '$senderLabel: ${msg.content}';
+        })
         .toList();
     
     if (messageTexts.isEmpty) {
@@ -1183,7 +1243,7 @@ $detailedContext
       
       // 構建情緒分析的提示詞
       final prompt = '''
-請對以下對話內容進行情緒分析，重點關注用戶 "$currentUser" 和對話參與者的情緒狀態：
+請對以下對話內容進行情緒分析，重點關注"你"和"他"的情緒狀態：
 
 對話內容：
 $conversationContext
