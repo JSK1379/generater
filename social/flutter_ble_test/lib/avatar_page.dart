@@ -137,11 +137,11 @@ class _AvatarPageState extends State<AvatarPage> {
     final isFullBody = _selectedBody == '全身';
     
     final prompt = isFullBody
-        ? 'Generate a ${englishGender.isNotEmpty ? englishGender + ' ' : ''}person full body portrait from hair to knees. ${_descController.text.trim()}. '
+        ? 'Generate a ${englishGender.isNotEmpty ? '$englishGender ' : ''}person full body portrait from hair to knees. ${_descController.text.trim()}. '
             '${englishHair.isNotEmpty ? 'Hair: $englishHair. ' : ''}'
             '${englishStyle.isNotEmpty ? 'Art style: $englishStyle. ' : ''}'
             'High quality, detailed image.'
-        : 'Generate a ${englishGender.isNotEmpty ? englishGender + ' ' : ''}person avatar portrait. ${_descController.text.trim()}. '
+        : 'Generate a ${englishGender.isNotEmpty ? '$englishGender ' : ''}person avatar portrait. ${_descController.text.trim()}. '
             '${englishHair.isNotEmpty ? 'Hair: $englishHair. ' : ''}'
             '${englishStyle.isNotEmpty ? 'Art style: $englishStyle. ' : ''}'
             'High quality, detailed headshot.';
