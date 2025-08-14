@@ -33,6 +33,38 @@ class _AvatarPageState extends State<AvatarPage> {
   String _selectedStyle = '';
   String _selectedBody = '';
 
+  // 中文轉英文的輔助函數
+  String _translateToEnglish(String category, String value) {
+    switch (category) {
+      case 'gender':
+        switch (value) {
+          case '男': return 'male';
+          case '女': return 'female';
+          default: return value;
+        }
+      case 'hair':
+        switch (value) {
+          case '長髮': return 'long hair';
+          case '短髮': return 'short hair';
+          default: return value;
+        }
+      case 'style':
+        switch (value) {
+          case '日系': return 'Japanese anime style';
+          case '美式': return 'American comic style';
+          case 'Q版': return 'chibi style';
+          default: return value;
+        }
+      case 'body':
+        switch (value) {
+          case '全身': return 'full body';
+          default: return value;
+        }
+      default:
+        return value;
+    }
+  }
+
   // 新增：套用頭像
   void _applyAvatar() async {
     // 新增：彈窗確認
@@ -97,16 +129,22 @@ class _AvatarPageState extends State<AvatarPage> {
     }
     final apiKey = _apiKey;
     final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=$apiKey');
-    // 將「人」加入描述詞但不顯示在輸入框
-    final prompt = _selectedBody == '全身'
-        ? '${_descController.text.trim()} 生成一個包含人的全身像，從頭髮到膝蓋，一定要符合條件，'
-            '${_selectedGender.isNotEmpty ? '性別：$_selectedGender，' : ''}'
-            '${_selectedHair.isNotEmpty ? '髮型：$_selectedHair，' : ''}'
-            '${_selectedStyle.isNotEmpty ? '畫風：$_selectedStyle，' : ''}'
-        : '${_descController.text.trim()} 生成一個包含人的頭像，'
-            '${_selectedGender.isNotEmpty ? '性別：$_selectedGender，' : ''}'
-            '${_selectedHair.isNotEmpty ? '髮型：$_selectedHair，' : ''}'
-            '${_selectedStyle.isNotEmpty ? '畫風：$_selectedStyle，' : ''}';
+    
+    // 構建英文 prompt，將中文選項轉換為英文
+    final englishGender = _selectedGender.isNotEmpty ? _translateToEnglish('gender', _selectedGender) : '';
+    final englishHair = _selectedHair.isNotEmpty ? _translateToEnglish('hair', _selectedHair) : '';
+    final englishStyle = _selectedStyle.isNotEmpty ? _translateToEnglish('style', _selectedStyle) : '';
+    final isFullBody = _selectedBody == '全身';
+    
+    final prompt = isFullBody
+        ? 'Generate a ${englishGender.isNotEmpty ? englishGender + ' ' : ''}person full body portrait from hair to knees. ${_descController.text.trim()}. '
+            '${englishHair.isNotEmpty ? 'Hair: $englishHair. ' : ''}'
+            '${englishStyle.isNotEmpty ? 'Art style: $englishStyle. ' : ''}'
+            'High quality, detailed image.'
+        : 'Generate a ${englishGender.isNotEmpty ? englishGender + ' ' : ''}person avatar portrait. ${_descController.text.trim()}. '
+            '${englishHair.isNotEmpty ? 'Hair: $englishHair. ' : ''}'
+            '${englishStyle.isNotEmpty ? 'Art style: $englishStyle. ' : ''}'
+            'High quality, detailed headshot.';
     final body = jsonEncode({
       "contents": [
         {
