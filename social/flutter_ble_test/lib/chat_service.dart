@@ -956,28 +956,74 @@ class ChatService extends ChangeNotifier {
         throw Exception('請先在 Gemini Service 中設定您的 API Key');
       }
       
+      // 從房間ID提取雙方用戶ID (格式: room_user1_user2)
+      String otherUserId = '';
+      final roomParts = roomId.split('_');
+      if (roomParts.length >= 3) {
+        final user1 = roomParts[1];
+        final user2 = roomParts[2];
+        otherUserId = (user1 == currentUser) ? user2 : user1;
+      }
+      
       // 分析對話中的角色和最新訊息
       final messages = getMessagesForRoom(roomId);
       
       // 如果沒有對話內容或者明確要求生成問候語
       if (messages.isEmpty || conversationContext.contains('問候語')) {
-        // 生成友善的問候語
-        final greetingPrompt = '''
+        // 獲取雙方用戶資料來生成個性化問候語
+        Map<String, dynamic>? currentUserProfile;
+        Map<String, dynamic>? otherUserProfile;
+        
+        try {
+          final futures = await Future.wait([
+            _userApiService.getUserProfile(currentUser),
+            otherUserId.isNotEmpty ? _userApiService.getUserProfile(otherUserId) : Future.value(null),
+          ]);
+          currentUserProfile = futures[0];
+          otherUserProfile = futures[1];
+        } catch (e) {
+          debugPrint('[ChatService] 獲取用戶資料失敗: $e');
+        }
+        
+        // 生成基於雙方用戶資料的友善問候語
+        String greetingPrompt = '''
 你是一個智能助手，請為用戶 "$currentUser" 生成一條友善的問候語來開始新的對話。
+
+## 用戶資料：
+${_buildUserInfoForPrompt(currentUserProfile, '當前用戶 ($currentUser)')}
+
+${_buildUserInfoForPrompt(otherUserProfile, '對方用戶 ($otherUserId)')}
 
 ## 要求：
 1. 語氣要親切自然
-2. 適合用於開始聊天
-3. 使用繁體中文
-4. 簡潔明了
-5. 直接輸出問候語內容，不要包含任何前綴、說明或格式標記
+2. 基於雙方的資料（興趣愛好、年齡等），讓問候語更加個性化
+3. 如果雙方有共同興趣，可以適當提及
+4. 適合用於開始聊天
+5. 使用繁體中文
+6. 簡潔明了
+7. 直接輸出問候語內容，不要包含任何前綴、說明或格式標記
 
-請生成問候語：
+請生成個性化問候語：
 ''';
         
         final greeting = await _geminiService.sendMessage(greetingPrompt);
         debugPrint('[ChatService] ✅ 成功生成問候語: $greeting');
         return greeting.trim();
+      }
+      
+      // 並行獲取雙方用戶資料
+      Map<String, dynamic>? currentUserProfile;
+      Map<String, dynamic>? otherUserProfile;
+      
+      try {
+        final futures = await Future.wait([
+          _userApiService.getUserProfile(currentUser),
+          otherUserId.isNotEmpty ? _userApiService.getUserProfile(otherUserId) : Future.value(null),
+        ]);
+        currentUserProfile = futures[0];
+        otherUserProfile = futures[1];
+      } catch (e) {
+        debugPrint('[ChatService] 獲取用戶資料時發生錯誤: $e');
       }
       
       // 取得最近的非 AI 訊息，找出對話對象
@@ -1003,9 +1049,14 @@ class ChatService extends ChangeNotifier {
         }
       }
       
-      // 構建回覆建議的提示詞
+      // 構建包含雙方用戶資料的回覆建議提示詞
       final prompt = '''
 你是一個智能助手，請幫助用戶 "$currentUser" 生成合適的回覆建議。
+
+## 用戶資料：
+${_buildUserInfoForPrompt(currentUserProfile, '當前用戶 ($currentUser)')}
+
+${_buildUserInfoForPrompt(otherUserProfile, '對方用戶 ($otherUserId)')}
 
 ## 對話背景：
 - 我是: $currentUser
@@ -1017,24 +1068,55 @@ $detailedContext
 
 ## 任務要求：
 1. 請站在 "$currentUser" 的角度，生成一個合適的回覆
-2. 回覆應該自然、友善，符合對話語境
-3. 考慮對話的情緒和主題
-4. 回覆長度適中，不要太長或太短
-5. 直接輸出回覆內容，不要包含任何前綴、說明或格式標記
+2. 基於雙方的資料（年齡、興趣、性別等），讓回覆更加個性化和有針對性
+3. 如果對方有特定興趣，可以適當引用或提及相關話題
+4. 回覆應該自然、友善，符合對話語境和雙方的背景
+5. 考慮對話的情緒和主題
+6. 回覆長度適中，不要太長或太短
+7. 直接輸出回覆內容，不要包含任何前綴、說明或格式標記
 
-請生成回覆建議：
+請生成個性化的回覆建議：
 ''';
       
       // 使用 Gemini 生成回覆建議
       final suggestion = await _geminiService.sendMessage(prompt);
       
-      debugPrint('[ChatService] ✅ 成功生成回覆建議: ${suggestion.substring(0, suggestion.length > 50 ? 50 : suggestion.length)}...');
+      debugPrint('[ChatService] ✅ 成功生成個性化回覆建議: ${suggestion.substring(0, suggestion.length > 50 ? 50 : suggestion.length)}...');
       return suggestion.trim();
       
     } catch (e) {
       debugPrint('❌ [ChatService] 生成回覆建議失敗: $e');
       throw Exception('生成回覆建議失敗: $e');
     }
+  }
+  
+  /// 構建用戶資料的 prompt 字符串
+  String _buildUserInfoForPrompt(Map<String, dynamic>? userProfile, String label) {
+    if (userProfile == null) {
+      return '$label: 資料獲取中或無可用資料';
+    }
+    
+    final nickname = userProfile['nickname'] ?? '未知';
+    final age = userProfile['age']?.toString() ?? '未知';
+    final gender = _getGenderText(userProfile['gender']);
+    
+    String info = '$label: $nickname (年齡: $age, 性別: $gender)';
+    
+    // 添加興趣愛好
+    if (userProfile['hobbies'] != null && (userProfile['hobbies'] as List).isNotEmpty) {
+      final hobbies = (userProfile['hobbies'] as List)
+          .map((hobby) => hobby['name'] ?? '未知')
+          .join(', ');
+      info += '\n興趣愛好: $hobbies';
+    }
+    
+    // 添加自定義興趣描述
+    if (userProfile['custom_hobby_description'] != null &&
+        userProfile['custom_hobby_description'].toString().isNotEmpty) {
+      info += '\n其他興趣: ${userProfile['custom_hobby_description']}';
+    }
+    
+    return info;
   }
   
   /// 檢查訊息是否應該觸發 AI
