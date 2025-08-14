@@ -10,6 +10,8 @@ import 'chat_page.dart';
 import 'dart:convert';
 import 'chat_models.dart';
 import 'chat_room_open_manager.dart'; // 導入全局管理器
+import 'user_api_service.dart'; // 導入用戶 API 服務
+import 'api_config.dart'; // 導入 API 配置
 
 class MainTabPage extends StatefulWidget {
   const MainTabPage({super.key});
@@ -21,6 +23,7 @@ class MainTabPageState extends State<MainTabPage> {
   int currentIndex = 0;
   bool _isAdvertising = false;
   final TextEditingController _nicknameController = TextEditingController();
+  late UserApiService _userApiService; // 用戶 API 服務
   
   // 使用全局管理器管理聊天室開啟狀態
   final ChatRoomOpenManager _openManager = ChatRoomOpenManager();
@@ -28,6 +31,7 @@ class MainTabPageState extends State<MainTabPage> {
   @override
   void initState() {
     super.initState();
+    _userApiService = UserApiService(ApiConfig.baseUrl); // 初始化 API 服務
     _loadNicknameFromPrefs();
     // 添加全局連接請求監聽器
     ChatServiceSingleton.instance.addConnectRequestListener(_handleConnectRequest);
@@ -42,6 +46,41 @@ class MainTabPageState extends State<MainTabPage> {
     // 移除全局聊天室加入監聽器
     ChatServiceSingleton.instance.webSocketService.removeMessageListener(_onWsMessage);
     super.dispose();
+  }
+
+  // 獲取用戶資料
+  Future<Map<String, dynamic>?> _fetchUserProfile(String userId) async {
+    try {
+      debugPrint('[MainTabPage] 開始獲取用戶資料: $userId');
+      
+      // 使用 UserApiService 獲取用戶資料
+      final userProfile = await _userApiService.getUserProfile(userId);
+      
+      if (userProfile != null) {
+        debugPrint('[MainTabPage] 成功獲取用戶資料: $userProfile');
+        return userProfile;
+      } else {
+        debugPrint('[MainTabPage] 獲取用戶資料失敗');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('[MainTabPage] 獲取用戶資料錯誤: $e');
+      return null;
+    }
+  }
+
+  // 獲取性別文字
+  String _getGenderText(String? gender) {
+    switch (gender) {
+      case 'male':
+        return '男性';
+      case 'female':
+        return '女性';
+      case 'other':
+        return '其他';
+      default:
+        return '未設定';
+    }
   }
 
   Future<void> _loadNicknameFromPrefs() async {
@@ -126,32 +165,173 @@ class MainTabPageState extends State<MainTabPage> {
     
     if (!mounted) return;
     
-    // 顯示全局連接請求對話框
+    // 首先嘗試獲取連接者的用戶資料
+    Map<String, dynamic>? userProfile;
+    bool isLoading = true;
+    
+    // 顯示全局連接請求對話框，包含用戶資料
     final result = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (BuildContext context) => AlertDialog(
-        title: const Text('收到連接請求'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('來自用戶: $fromUserId'),
-            const SizedBox(height: 8),
-            const Text('是否接受連接請求？'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('拒絕'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('接受'),
-          ),
-        ],
-      ),
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            // 如果還在載入且還沒開始請求，開始請求
+            if (isLoading && userProfile == null) {
+              _fetchUserProfile(fromUserId).then((profile) {
+                if (context.mounted) {
+                  setState(() {
+                    userProfile = profile;
+                    isLoading = false;
+                  });
+                }
+              }).catchError((error) {
+                if (context.mounted) {
+                  setState(() {
+                    isLoading = false;
+                  });
+                }
+              });
+            }
+
+            return AlertDialog(
+              title: const Text('收到連接請求'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: isLoading
+                    ? const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 16),
+                          Text('載入用戶資料中...'),
+                        ],
+                      )
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          // 標題
+                          const Text(
+                            '來自以下用戶的連接請求：',
+                            style: TextStyle(fontSize: 16),
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // 暱稱
+                          Text(
+                            userProfile?['nickname'] ?? '未知用戶',
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // 性別
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.person, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                _getGenderText(userProfile?['gender']),
+                                style: const TextStyle(fontSize: 16),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          
+                          // 年齡
+                          if (userProfile?['age'] != null) ...[
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.cake, size: 20),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '${userProfile!['age']} 歲',
+                                  style: const TextStyle(fontSize: 16),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                          
+                          // 頭像
+                          CircleAvatar(
+                            radius: 50,
+                            backgroundImage: userProfile?['avatar_url'] != null && 
+                                             userProfile!['avatar_url'].toString().isNotEmpty
+                                ? NetworkImage(userProfile!['avatar_url'])
+                                : null,
+                            child: userProfile?['avatar_url'] == null || 
+                                   userProfile!['avatar_url'].toString().isEmpty
+                                ? const Icon(Icons.person, size: 50)
+                                : null,
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // 興趣
+                          if (userProfile?['hobbies'] != null && 
+                              (userProfile!['hobbies'] as List).isNotEmpty) ...[
+                            const Text(
+                              '興趣愛好',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: (userProfile!['hobbies'] as List)
+                                  .map((hobby) => Chip(
+                                        label: Text(
+                                          hobby['name'] ?? '未知',
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                        backgroundColor: Colors.blue[100],
+                                      ))
+                                  .toList(),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                          
+                          // 如果有自定義興趣描述
+                          if (userProfile?['custom_hobby_description'] != null &&
+                              userProfile!['custom_hobby_description'].toString().isNotEmpty) ...[
+                            Text(
+                              '其他興趣: ${userProfile!['custom_hobby_description']}',
+                              style: const TextStyle(fontSize: 14, fontStyle: FontStyle.italic),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                          
+                          const SizedBox(height: 8),
+                          const Text('是否接受連接請求？'),
+                        ],
+                      ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('拒絕'),
+                ),
+                ElevatedButton(
+                  onPressed: isLoading ? null : () => Navigator.of(context).pop(true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('接受'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
     
     if (!mounted) return;

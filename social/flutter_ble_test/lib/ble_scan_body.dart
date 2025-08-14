@@ -425,7 +425,7 @@ class _BleScanBodyState extends State<BleScanBody> {
                     backgroundColor: Colors.blue,
                     foregroundColor: Colors.white,
                   ),
-                  child: const Text('確定連接'),
+                  child: const Text('發送連接'),
                 ),
               ],
             );
