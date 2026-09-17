@@ -1,7 +1,6 @@
 # Near Ride
 
-Near Ride is now organized as a single monorepo containing the Flutter client,
-FastAPI backend, GPS trajectory matching, and developer tools.
+Near Ride is organized as a single monorepo containing the Flutter client, FastAPI backend, GPS trajectory matching, and developer tools.
 
 ## Project layout
 
@@ -9,18 +8,21 @@ FastAPI backend, GPS trajectory matching, and developer tools.
 near-ride/
 ├─ app/                         Flutter mobile app
 │  └─ lib/
-│     ├─ core/                  shared configuration/network code
-│     └─ features/              feature-oriented modules
+│     ├─ main.dart
+│     ├─ main_tab_page.dart     app shell/navigation
+│     ├─ core/                  shared config/network/compat code
+│     └─ features/              auth, BLE, chat, GPS, profile, AI, settings
 ├─ server/                      FastAPI backend
 │  └─ app/
 │     ├─ models/
 │     ├─ routes/
 │     └─ services/
-│        └─ trajectory/         Geohash / distance / DTW / hybrid matching
+│        └─ trajectory/         geohash / distance / DTW / hybrid matching
 ├─ tools/
-│  ├─ flutter/_test_tab.dart    developer-only Flutter test screen
+│  ├─ flutter/_test_tab.dart    developer-only Flutter diagnostics
 │  └─ gps/visualizer.py         offline trajectory visualization
 ├─ docs/
+│  └─ ARCHITECTURE.md
 └─ render.yaml
 ```
 
@@ -32,7 +34,7 @@ flutter pub get
 flutter run
 ```
 
-The production backend can be overridden without editing source code:
+Backend URLs can be overridden without editing source code:
 
 ```bash
 flutter run \
@@ -40,8 +42,7 @@ flutter run \
   --dart-define=WS_URL=wss://your-api.example.com
 ```
 
-Developer-only utilities under `tools/` are intentionally not imported by the
-production app.
+Legacy files directly under `app/lib/` are temporary compatibility exports. New code should import from `core/` or `features/`.
 
 ## FastAPI backend
 
@@ -54,15 +55,11 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-Default local API: `http://127.0.0.1:8000`
-
-If `DATABASE_URL` is not set, the backend falls back to a local SQLite database
-for development. Production should use PostgreSQL.
+If `DATABASE_URL` is not set, the backend falls back to a local SQLite database for development. Production should use PostgreSQL.
 
 ## Server environment variables
 
-Copy `server/.env.example` to `server/.env` for local development and fill in
-only the values you need.
+Copy `server/.env.example` to `server/.env` for local development.
 
 ```env
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DBNAME
@@ -70,17 +67,14 @@ USE_CLOUD_STORAGE=false
 CLOUDINARY_URL=
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-2.0-flash
+GEMINI_IMAGE_MODEL=gemini-2.0-flash-preview-image-generation
 ```
 
-Never commit `.env`, `secret.json`, API keys, database passwords, or Cloudinary
-credentials.
+Never commit `.env`, `secret.json`, API keys, database passwords, or cloud credentials.
 
 ## GPS architecture
 
-The mobile app records GPS points through the FastAPI service. All persisted
-GPS points use the same `gps_locations` table.
-
-Trajectory matching lives inside the backend:
+The mobile app records GPS points through FastAPI. Trajectory matching is an internal backend service:
 
 ```text
 server/app/services/trajectory/
@@ -89,7 +83,7 @@ server/app/services/trajectory/
 └─ analyzer.py
 ```
 
-Available algorithms are `geohash`, `distance`, `dtw`, and `hybrid`.
+Supported matching methods are `geohash`, `distance`, `dtw`, and `hybrid`.
 
 Example endpoint:
 
@@ -97,33 +91,29 @@ Example endpoint:
 GET /gps/similar/{user_id}?method=hybrid&threshold=0.3&days=7
 ```
 
-Visualization is a development tool only and stays at
-`tools/gps/visualizer.py`; FastAPI does not depend on matplotlib or folium at
-runtime.
+Visualization remains developer-only under `tools/gps/` and is not a FastAPI runtime dependency.
 
 ## AI architecture
 
-Gemini credentials are server-managed. The Flutter app never stores the Gemini
-API key. AI traffic flows as:
+Gemini credentials are server-managed. Flutter never stores the Gemini API key.
 
 ```text
-Flutter -> FastAPI /ai/* -> Gemini API
+Flutter -> FastAPI /ai/generate  -> Gemini text
+Flutter -> FastAPI /ai/summarize -> Gemini text
+Flutter -> FastAPI /ai/emotion   -> Gemini text
+Flutter -> FastAPI /ai/avatar    -> Gemini image generation
 ```
-
-Configure `GEMINI_API_KEY` only in the server environment.
 
 ## Deployment
 
-`render.yaml` deploys only the `server/` directory as the backend service.
-Database, Cloudinary, and Gemini credentials are configured as Render
-environment variables rather than committed files.
+`render.yaml` deploys the `server/` directory. Database, Cloudinary, and Gemini credentials are configured as environment variables rather than committed files.
 
-## Current refactor branch
+## Refactor branch
 
-Development for the monorepo migration is isolated in:
+All monorepo/refactor work is isolated in:
 
 ```text
 refactor/near-ride-monorepo
 ```
 
-Do not merge into `main` until the Flutter and backend smoke tests pass.
+This branch must not be merged into `main` until explicitly approved. Flutter and backend runtime smoke tests are still required before merge; repository-level structural checks are not a substitute for running the apps.
