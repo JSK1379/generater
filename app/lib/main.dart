@@ -1,22 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'api_config.dart';
+import 'chat_service_singleton.dart';
+import 'features/gps/services/gps_tracker.dart';
 import 'main_tab_page.dart';
 import 'user_id_setup_page_new.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'chat_service_singleton.dart';
-import 'api_config.dart';
-import 'background_gps_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // 初始化背景GPS服務
+
   try {
-    await BackgroundGPSService.initialize();
-    debugPrint('[Main] 背景GPS服務初始化完成');
-  } catch (e) {
-    debugPrint('[Main] 背景GPS服務初始化失敗: $e');
+    await GpsTracker.initialize();
+    debugPrint('[Main] GPS tracker initialized');
+  } catch (error) {
+    debugPrint('[Main] GPS tracker initialization failed: $error');
   }
-  
+
   runApp(const MyApp());
 }
 
@@ -52,74 +52,65 @@ class _AppInitializerState extends State<AppInitializer> {
   Future<void> _checkUserId() async {
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getString('user_id');
-    
-    await Future.delayed(const Duration(milliseconds: 500)); // 短暫載入畫面
-    
+
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
+
+    if (userId == null || userId.isEmpty) {
+      Navigator.of(context).pushReplacementNamed('/setup_new');
+      return;
+    }
+
+    await _registerUserToServer(userId);
     if (mounted) {
-      if (userId == null || userId.isEmpty) {
-        // 新的路由應該使用新的註冊頁面
-        Navigator.of(context).pushReplacementNamed('/setup_new');
-      } else {
-        // 有 user_id，僅用 WebSocket 向伺服器發送 register_user 訊息
-        await _registerUserToServer(userId);
-        if (mounted) {
-          Navigator.of(context).pushReplacementNamed('/main');
-        }
-      }
+      Navigator.of(context).pushReplacementNamed('/main');
     }
   }
 
   Future<void> _registerUserToServer(String userId) async {
-    // 設置計時器，40秒後顯示提示
-    bool connectionCompleted = false;
+    var connectionCompleted = false;
+
     Future.delayed(const Duration(seconds: 40)).then((_) {
-      if (!connectionCompleted && mounted) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: const Text('提示'),
-              content: const Text('伺服器正在更新'),
-              actions: <Widget>[
-                TextButton(
-                  child: const Text('關閉程式'),
-                  onPressed: () {
-                    // 關閉程式
-                    Navigator.of(context).pop();
-                    // 在實際設備上，這不會完全關閉app，但會返回到上一頁
-                    // 如果需要完全關閉，可能需要平台特定的代碼
-                    Navigator.of(context).popUntil((route) => route.isFirst);
-                  },
-                ),
-                TextButton(
-                  child: const Text('重試'),
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    // 重試連接
-                    _registerUserToServer(userId);
-                  },
-                ),
-              ],
-            );
-          },
-        );
-      }
+      if (connectionCompleted || !mounted) return;
+
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('提示'),
+          content: const Text('伺服器正在更新'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                Navigator.of(context).popUntil((route) => route.isFirst);
+              },
+              child: const Text('關閉程式'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                _registerUserToServer(userId);
+              },
+              child: const Text('重試'),
+            ),
+          ],
+        ),
+      );
     });
 
     try {
       final chatService = ChatServiceSingleton.instance;
-      final wsUrl = ApiConfig.wsUrl;
-      await chatService.connect(wsUrl, '', userId);
+      await chatService.connect(ApiConfig.wsUrl, '', userId);
       connectionCompleted = true;
       chatService.webSocketService.sendMessage({
         'type': 'register_user',
         'userId': userId,
       });
-      debugPrint('[Main] WebSocket 用戶註冊成功: userId=$userId');
-    } catch (e) {
+      debugPrint('[Main] WebSocket user registered: $userId');
+    } catch (error) {
       connectionCompleted = true;
-      debugPrint('[Main] WebSocket 用戶註冊失敗: $e');
+      debugPrint('[Main] WebSocket registration failed: $error');
     }
   }
 
