@@ -32,12 +32,15 @@ class ApiConfig {
 
   // GPS
   static String get gpsLocation => '$_baseUrl/gps/location';
+  static String get gpsUpload => '$_baseUrl/gps/upload';
   static String gpsUserLocations(String userId) =>
       '$_baseUrl/gps/locations/$userId';
   static String gpsUserLocationsByDate(String userId, String date) =>
       '$_baseUrl/gps/locations/$userId/date/$date';
   static String gpsDeleteLocations(String userId) =>
       '$_baseUrl/gps/locations/$userId';
+  static String gpsSimilarUsers(String userId) =>
+      '$_baseUrl/gps/similar/$userId';
 
   // Chat / Friends
   static String get chatHistory => '$_baseUrl/chat_history';
