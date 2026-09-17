@@ -3,10 +3,14 @@ import logging
 import os
 import uuid
 from io import BytesIO
+from pathlib import Path
+from urllib.parse import urlsplit
 
 from PIL import Image
 
 logger = logging.getLogger(__name__)
+UPLOAD_DIR = Path(__file__).resolve().parents[2] / 'uploads'
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class CloudAvatarService:
@@ -46,22 +50,28 @@ class CloudAvatarService:
         return output
 
     def save_avatar(self, avatar_base64: str, user_id: int, request_url: str | None = None) -> str:
-        if not self.enabled or not self.cloudinary_url:
-            raise ValueError('雲端頭像儲存尚未設定')
-
-        from cloudinary import uploader
-
         image = self._prepare(self._decode(avatar_base64))
-        public_id = f'avatars/user_{user_id}_{uuid.uuid4().hex[:8]}'
-        result = uploader.upload(
-            image,
-            public_id=public_id,
-            resource_type='image',
-            format='webp',
-            overwrite=True,
-            invalidate=True,
-        )
-        return result['secure_url']
+        image_id = f'avatar_{user_id}_{uuid.uuid4().hex[:12]}'
+
+        if self.enabled and self.cloudinary_url:
+            from cloudinary import uploader
+
+            result = uploader.upload(
+                image,
+                public_id=f'avatars/{image_id}',
+                resource_type='image',
+                format='webp',
+                overwrite=True,
+                invalidate=True,
+            )
+            return result['secure_url']
+
+        (UPLOAD_DIR / f'{image_id}.webp').write_bytes(image.getvalue())
+        if request_url:
+            parsed = urlsplit(request_url)
+            if parsed.scheme and parsed.netloc:
+                return f'{parsed.scheme}://{parsed.netloc}/images/{image_id}'
+        return f'/images/{image_id}'
 
     def delete_avatar(self, avatar_url: str) -> bool:
         if not self.enabled or 'cloudinary' not in avatar_url:
