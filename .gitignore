@@ -1,1 +1,29 @@
-social/flutter_ble_test/assets/secret.json
+# Secrets / environment
+.env
+.env.*
+!.env.example
+**/secret.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.log
+*.db
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Generated GPS analysis output
+output/
+analysis_report.txt
