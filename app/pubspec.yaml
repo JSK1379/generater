@@ -4,7 +4,7 @@ description: Near Ride mobile app for BLE discovery, GPS matching, and chat.
 publish_to: 'none'
 
 environment:
-  sdk: ">=2.17.0 <3.0.0"
+  sdk: ">=3.7.0 <4.0.0"
 
 dependencies:
   flutter:
