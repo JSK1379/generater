@@ -35,11 +35,24 @@ class GPSLocationData(BaseModel):
         return value
 
 
+class GPSRouteUpload(BaseModel):
+    user_id: int
+    date: str | None = None
+    route: list[GPSLocationData]
+
+
 def _require_user(db: Session, user_id: int) -> User:
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise HTTPException(status_code=404, detail='用戶不存在')
     return user
+
+
+def _parse_timestamp(value: str) -> datetime:
+    try:
+        return datetime.fromisoformat(value.replace('Z', '+00:00')).replace(tzinfo=None)
+    except ValueError:
+        raise HTTPException(status_code=400, detail='時間格式無效')
 
 
 def _serialize(location: GPSLocation) -> dict:
@@ -58,21 +71,51 @@ def record_gps_location(
     db: Session = Depends(get_db),
 ):
     _require_user(db, user_id)
-    try:
-        timestamp = datetime.fromisoformat(payload.ts.replace('Z', '+00:00')).replace(tzinfo=None)
-    except ValueError:
-        raise HTTPException(status_code=400, detail='時間格式無效')
-
     location = GPSLocation(
         user_id=user_id,
         latitude=payload.lat,
         longitude=payload.lng,
-        timestamp=timestamp,
+        timestamp=_parse_timestamp(payload.ts),
     )
     db.add(location)
     db.commit()
     db.refresh(location)
     return {'message': 'GPS 定位記錄成功', 'user_id': user_id, **_serialize(location)}
+
+
+@router.post('/gps/upload')
+def upload_gps_route(
+    payload: GPSRouteUpload,
+    db: Session = Depends(get_db),
+):
+    """Compatibility endpoint for the existing commute recorder.
+
+    Route points are normalized into the same gps_locations table used by the
+    new single-point endpoint, so there is only one source of GPS data.
+    """
+    _require_user(db, payload.user_id)
+    if not payload.route:
+        raise HTTPException(status_code=400, detail='路線不能為空')
+    if len(payload.route) > 10000:
+        raise HTTPException(status_code=400, detail='路線點數過多')
+
+    rows = [
+        GPSLocation(
+            user_id=payload.user_id,
+            latitude=point.lat,
+            longitude=point.lng,
+            timestamp=_parse_timestamp(point.ts),
+        )
+        for point in payload.route
+    ]
+    db.add_all(rows)
+    db.commit()
+    return {
+        'message': 'GPS 路線上傳成功',
+        'user_id': payload.user_id,
+        'date': payload.date,
+        'points_saved': len(rows),
+    }
 
 
 @router.get('/gps/locations/{user_id}')
