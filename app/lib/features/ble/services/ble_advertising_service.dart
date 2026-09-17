@@ -33,7 +33,10 @@ class SettingsBleHelper {
     required ImageProvider? avatarImageProvider,
     required bool enable,
   }) async {
-    if (!enable) return _peripheral.stop();
+    if (!enable) {
+      await _peripheral.stop();
+      return;
+    }
 
     final nicknameBytes = _fitUtf8(
       nickname.isEmpty ? 'Unknown' : nickname,
@@ -45,7 +48,8 @@ class SettingsBleHelper {
             <int>[];
 
     final used = 4 + 1 + nicknameBytes.length + 1;
-    avatarBytes = avatarBytes.take((_maxPayloadBytes - used).clamp(0, 255)).toList();
+    final available = _availableBytes(used);
+    avatarBytes = avatarBytes.take(available).toList();
 
     await _start(
       nickname: nickname,
@@ -65,14 +69,17 @@ class SettingsBleHelper {
     required String imageId,
     required bool enable,
   }) async {
-    if (!enable) return _peripheral.stop();
+    if (!enable) {
+      await _peripheral.stop();
+      return;
+    }
 
     final nicknameBytes = _fitUtf8(
       nickname.isEmpty ? 'Unknown' : nickname,
       12,
     );
     final used = 4 + 1 + nicknameBytes.length + 1;
-    final imageBytes = _fitUtf8(imageId, (_maxPayloadBytes - used).clamp(0, 255));
+    final imageBytes = _fitUtf8(imageId, _availableBytes(used));
 
     await _start(
       nickname: nickname,
@@ -93,7 +100,10 @@ class SettingsBleHelper {
     required String imageId,
     required bool enable,
   }) async {
-    if (!enable) return _peripheral.stop();
+    if (!enable) {
+      await _peripheral.stop();
+      return;
+    }
 
     final nicknameBytes = _fitUtf8(
       nickname.isEmpty ? 'Unknown' : nickname,
@@ -101,7 +111,7 @@ class SettingsBleHelper {
     );
     final userBytes = _fitUtf8(userId, 8);
     final used = 4 + 1 + nicknameBytes.length + 1 + userBytes.length + 1;
-    final imageBytes = _fitUtf8(imageId, (_maxPayloadBytes - used).clamp(0, 255));
+    final imageBytes = _fitUtf8(imageId, _availableBytes(used));
 
     await _start(
       nickname: nickname,
@@ -116,6 +126,11 @@ class SettingsBleHelper {
         ...imageBytes,
       ],
     );
+  }
+
+  static int _availableBytes(int used) {
+    final remaining = _maxPayloadBytes - used;
+    return remaining > 0 ? remaining : 0;
   }
 
   static Future<void> _start({
