@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import create_tables, initialize_hobbies
-from app.routes import chat_routes, friend_routes, gps_routes, hobby_routes, user_routes
+from app.routes import ai_routes, chat_routes, friend_routes, gps_routes, hobby_routes, user_routes
 
 # Import models so SQLAlchemy sees every table before create_all().
 import app.models.chat  # noqa: F401,E402
@@ -42,6 +42,7 @@ app.include_router(chat_routes.router)
 app.include_router(friend_routes.router, prefix='/friends')
 app.include_router(hobby_routes.router)
 app.include_router(gps_routes.router)
+app.include_router(ai_routes.router)
 
 
 @app.get('/')
