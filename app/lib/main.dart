@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'api_config.dart';
-import 'chat_service_singleton.dart';
+import 'package:near_ride/core/config/api_config.dart';
+import 'package:near_ride/features/chat/services/chat_service_singleton.dart';
 import 'features/gps/services/gps_tracker.dart';
-import 'main_tab_page.dart';
-import 'user_id_setup_page_new.dart';
+import 'package:near_ride/features/home/pages/main_tab_page.dart';
+import 'package:near_ride/features/auth/pages/user_id_setup_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
