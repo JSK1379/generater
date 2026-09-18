@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
-import 'background_gps_service.dart';
-import 'enhanced_foreground_location_service.dart';
+import 'package:near_ride/features/gps/services/background_gps_service.dart';
+import 'package:near_ride/features/gps/services/enhanced_foreground_location_service.dart';
 
 /// 高頻率背景GPS測試頁面
 /// 用於測試類似Google Maps的背景GPS追蹤功能
