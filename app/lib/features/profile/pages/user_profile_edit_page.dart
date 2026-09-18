@@ -6,7 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
-import 'api_config.dart';
+import 'package:near_ride/core/config/api_config.dart';
 import 'avatar_page.dart';
 
 class UserProfileEditPage extends StatefulWidget {
