@@ -135,6 +135,10 @@ async def chat_gateway(websocket: WebSocket, db: Session = Depends(get_db)):
                     await _send_error(websocket, 'roomId and content are required')
                     continue
 
+                if db.query(ChatRoom).filter(ChatRoom.id == room_id).first() is None:
+                    await _send_error(websocket, 'Chat room not found')
+                    continue
+
                 if connection_manager.user_rooms.get(current_user_id) != room_id:
                     await connection_manager.join_room(current_user_id, room_id)
 
