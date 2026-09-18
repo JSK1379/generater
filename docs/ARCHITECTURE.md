@@ -4,24 +4,26 @@
 
 ```text
 near-ride/
-├─ app/                         Flutter production app
+├─ app/
 │  └─ lib/
 │     ├─ main.dart
-│     ├─ main_tab_page.dart     App shell/navigation
 │     ├─ core/
 │     │  ├─ config/
-│     │  ├─ network/
-│     │  └─ compat/             Temporary compatibility facades
+│     │  └─ network/
 │     └─ features/
 │        ├─ ai/
 │        ├─ auth/
 │        ├─ ble/
 │        ├─ chat/
+│        ├─ friends/
 │        ├─ gps/
+│        ├─ home/
 │        ├─ profile/
 │        └─ settings/
-├─ server/                      FastAPI backend
+├─ server/
 │  └─ app/
+│     ├─ database.py
+│     ├─ main.py
 │     ├─ models/
 │     ├─ routes/
 │     └─ services/
@@ -30,79 +32,121 @@ near-ride/
 │           ├─ similarity.py
 │           └─ analyzer.py
 ├─ tools/
-│  ├─ flutter/_test_tab.dart    Developer-only diagnostics
-│  └─ gps/visualizer.py         Offline GPS visualization
+│  ├─ flutter/_test_tab.dart
+│  └─ gps/visualizer.py
 └─ docs/
+   ├─ ARCHITECTURE.md
+   └─ API.md
 ```
 
 ## Runtime boundaries
 
-Near Ride has two production runtimes:
+There are two production runtimes:
 
 1. Flutter mobile application under `app/`.
 2. FastAPI backend under `server/`.
 
-GPS trajectory matching is an internal FastAPI service, not a third standalone application. Developer tools under `tools/` are never imported by the production Flutter or FastAPI runtime.
+GPS trajectory analysis is part of the FastAPI service. `tools/` contains developer/offline utilities and must not be imported by production runtime code.
 
-## Client data flow
+## Flutter responsibilities
+
+```text
+main.dart
+  └─ home
+     ├─ BLE
+     ├─ chat
+     └─ settings
+
+features/
+  ├─ auth       login / registration
+  ├─ ble        scan / advertising
+  ├─ chat       rooms / messages / image client
+  ├─ friends    friend API
+  ├─ gps        tracking / GPS API / background coordination
+  ├─ profile    profile / avatar
+  ├─ ai         backend AI client / settings info
+  └─ settings   user-facing settings
+```
+
+Shared API configuration and WebSocket transport belong in `core/`. Feature code should depend on focused services instead of a catch-all user API facade.
+
+## Backend responsibilities
+
+```text
+FastAPI
+├─ routes/
+│  ├─ user_routes.py
+│  ├─ friend_routes.py
+│  ├─ chat_routes.py
+│  ├─ gps_routes.py
+│  ├─ hobby_routes.py
+│  ├─ image_routes.py
+│  └─ ai_routes.py
+├─ models/                  SQLAlchemy models
+├─ database.py              engine/session/bootstrap
+└─ services/
+   ├─ connection_manager.py
+   ├─ avatar_service.py
+   └─ trajectory/
+```
+
+FastAPI startup uses the application lifespan to create tables and initialize default hobbies.
+
+## Client/server data flow
 
 ```text
 Flutter
-  ├─ BLE discovery / advertising
-  ├─ Auth / profile
-  ├─ GPS collection
-  ├─ Chat / WebSocket
-  └─ AI UI
-       │
-       ▼
+  ├─ REST ----------------------┐
+  ├─ WebSocket /ws ------------┤
+  ├─ BLE (device-local)         │
+  └─ native GPS                 │
+                               ▼
 FastAPI
-  ├─ REST API
-  ├─ WebSocket
-  ├─ SQLAlchemy database layer
-  ├─ AI proxy
-  └─ Trajectory service
+  ├─ SQLAlchemy -> database
+  ├─ image/avatar storage
+  ├─ Gemini proxy
+  └─ trajectory matching
 ```
 
 ## AI boundary
 
-All provider credentials stay on the server.
+All Gemini credentials are server-side.
 
 ```text
-Flutter -> /ai/generate   -> Gemini text model
-Flutter -> /ai/summarize  -> Gemini text model
-Flutter -> /ai/emotion    -> Gemini text model
-Flutter -> /ai/avatar     -> Gemini image model
+Flutter -> /ai/generate
+        -> /ai/summarize
+        -> /ai/emotion
+        -> /ai/avatar
+                    -> Gemini
 ```
 
-The Flutter app must never package `secret.json` or persist Gemini credentials locally.
+The Flutter app must never package `secret.json` or persist provider credentials.
 
 ## GPS boundary
 
-The Flutter app records location points through the FastAPI GPS routes. Database access remains inside FastAPI/SQLAlchemy. Trajectory algorithms receive prepared route points and do not open independent database connections.
+All persisted location data uses the backend `gps_locations` model. The legacy-compatible `POST /gps/upload` endpoint normalizes route points into the same table as `POST /gps/location`.
 
 ```text
-GPS points -> FastAPI -> database
-                     -> trajectory analyzer
-                        ├─ geohash
-                        ├─ distance
-                        ├─ DTW
-                        └─ hybrid
+GPS point(s) -> FastAPI -> gps_locations
+                       -> trajectory analyzer
+                          ├─ geohash
+                          ├─ distance
+                          ├─ DTW
+                          └─ hybrid
 ```
 
-`tools/gps/visualizer.py` is offline tooling and is intentionally excluded from server runtime dependencies.
+Trajectory services receive prepared location data and do not create an independent database connection.
 
-## Flutter migration rule
+## Images and avatars
 
-Files directly under `app/lib/` other than `main.dart` and `main_tab_page.dart` are temporary compatibility exports for legacy imports. New code should import the canonical implementation from `core/` or `features/`.
+When Cloudinary is enabled, images are stored in Cloudinary. Otherwise development fallback files are written under `server/uploads/`, which is ignored by Git.
 
-Compatibility exports can be removed only after all internal imports have been migrated and Flutter analysis/tests pass.
+## Refactor rules
 
-## Refactor principles
-
-1. One Flutter app and one backend service.
-2. Organize Flutter code by feature and backend code by route/model/service responsibility.
+1. Keep one Flutter app and one FastAPI backend.
+2. Organize Flutter by feature; keep cross-feature infrastructure in `core/`.
 3. Keep database access in FastAPI.
-4. Keep developer/test utilities outside production runtime directories.
+4. Keep tools outside production runtime directories.
 5. Keep secrets server-side.
-6. Prefer one canonical implementation per responsibility; legacy root files should only re-export during migration.
-7. Do not merge `refactor/near-ride-monorepo` into `main` until the refactor is explicitly approved.
+6. Prefer one canonical implementation for each responsibility.
+7. Do not merge `refactor/near-ride-monorepo` into `main` until explicitly approved.
