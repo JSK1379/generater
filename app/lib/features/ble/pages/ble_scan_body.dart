@@ -6,7 +6,7 @@ import 'dart:async';
 import 'package:near_ride/features/chat/services/chat_service_singleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:near_ride/core/config/api_config.dart';
-import 'package:near_ride/core/compat/user_api_service.dart';
+import 'package:near_ride/features/profile/services/profile_service.dart';
 
 class BleScanBody extends StatefulWidget {
   const BleScanBody({super.key});
@@ -21,7 +21,7 @@ class _BleScanBodyState extends State<BleScanBody> {
   BluetoothDevice? _connectedDevice;
   final Set<int> _expandedIndexes = {};
   String _currentUserId = ''; // 新增當前用戶 ID 變數
-  late UserApiService _userApiService; // 用戶 API 服務
+  late ProfileService _profileService; // 用戶 API 服務
   final Map<String, String> _deviceStableNames = {}; // 記錄裝置的穩定名稱
 
   StreamSubscription<BluetoothAdapterState>? _adapterStateSubscription;
@@ -30,7 +30,7 @@ class _BleScanBodyState extends State<BleScanBody> {
   @override
   void initState() {
     super.initState();
-    _userApiService = UserApiService(ApiConfig.baseUrl); // 初始化 API 服務
+    _profileService = ProfileService(ApiConfig.baseUrl); // 初始化 API 服務
     _loadCurrentUserId(); // 載入當前用戶 ID
     // 添加連接回應監聽器
     ChatServiceSingleton.instance.addConnectResponseListener(_onConnectResponse);
@@ -474,7 +474,7 @@ class _BleScanBodyState extends State<BleScanBody> {
       debugPrint('[BLE] 開始獲取用戶資料: $userId');
       
       // 使用 UserApiService 獲取用戶資料
-      final userProfile = await _userApiService.getUserProfile(userId);
+      final userProfile = await _profileService.getUserProfile(userId);
       
       if (userProfile != null) {
         debugPrint('[BLE] 成功獲取用戶資料: $userProfile');
