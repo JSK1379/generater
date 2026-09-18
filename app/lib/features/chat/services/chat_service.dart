@@ -1,14 +1,14 @@
 import 'dart:async';
 // import 'dart:io'; // 臨時註釋：圖片上傳功能暫時禁用
 import 'package:flutter/material.dart';
-import 'websocket_service.dart';
-import 'chat_models.dart';
+import 'package:near_ride/core/network/websocket_service.dart';
+import 'package:near_ride/features/chat/models/chat_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'user_api_service.dart';
+import 'package:near_ride/core/compat/user_api_service.dart';
 // import 'image_api_service.dart'; // 臨時註釋：圖片上傳功能暫時禁用
-import 'api_config.dart';
-import 'secure_gemini_service.dart'; // 安全版本的 Gemini Service
+import 'package:near_ride/core/config/api_config.dart';
+import 'package:near_ride/features/ai/services/ai_service.dart'; // 安全版本的 Gemini Service
 
 class ChatService extends ChangeNotifier {
   final WebSocketService _webSocketService = WebSocketService();
