@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,12 +15,6 @@ from app.routes import (
     user_routes,
 )
 
-# Import models so SQLAlchemy sees every table before create_all().
-import app.models.chat  # noqa: F401,E402
-import app.models.commute_route  # noqa: F401,E402
-import app.models.hobby  # noqa: F401,E402
-import app.models.user_status  # noqa: F401,E402
-
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -27,7 +22,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title='Near Ride Backend API', version='1.1.0')
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    logger.info('Starting Near Ride Backend API')
+    create_tables()
+    initialize_hobbies()
+    yield
+
+
+app = FastAPI(
+    title='Near Ride Backend API',
+    version='1.1.0',
+    lifespan=lifespan,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -36,13 +43,6 @@ app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
-
-
-@app.on_event('startup')
-def startup() -> None:
-    logger.info('Starting Near Ride Backend API')
-    create_tables()
-    initialize_hobbies()
 
 
 app.include_router(user_routes.router, prefix='/users')
