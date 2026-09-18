@@ -1,17 +1,27 @@
 # Near Ride
 
-Near Ride is organized as a single monorepo containing the Flutter client, FastAPI backend, GPS trajectory matching, and developer tools.
+Near Ride is a monorepo containing the Flutter client, FastAPI backend, GPS trajectory matching, and developer tools.
 
 ## Project layout
 
 ```text
 near-ride/
-├─ app/                         Flutter mobile app
+├─ app/                         Flutter app
 │  └─ lib/
-│     ├─ main.dart
-│     ├─ main_tab_page.dart     app shell/navigation
-│     ├─ core/                  shared config/network/compat code
-│     └─ features/              auth, BLE, chat, GPS, profile, AI, settings
+│     ├─ main.dart              application entrypoint
+│     ├─ core/
+│     │  ├─ config/             API / WebSocket configuration
+│     │  └─ network/            shared networking
+│     └─ features/
+│        ├─ ai/
+│        ├─ auth/
+│        ├─ ble/
+│        ├─ chat/
+│        ├─ friends/
+│        ├─ gps/
+│        ├─ home/               app shell/navigation
+│        ├─ profile/
+│        └─ settings/
 ├─ server/                      FastAPI backend
 │  └─ app/
 │     ├─ models/
@@ -19,10 +29,11 @@ near-ride/
 │     └─ services/
 │        └─ trajectory/         geohash / distance / DTW / hybrid matching
 ├─ tools/
-│  ├─ flutter/_test_tab.dart    developer-only Flutter diagnostics
+│  ├─ flutter/_test_tab.dart    developer-only diagnostics
 │  └─ gps/visualizer.py         offline trajectory visualization
 ├─ docs/
-│  └─ ARCHITECTURE.md
+│  ├─ ARCHITECTURE.md
+│  └─ API.md
 └─ render.yaml
 ```
 
@@ -42,7 +53,7 @@ flutter run \
   --dart-define=WS_URL=wss://your-api.example.com
 ```
 
-Legacy files directly under `app/lib/` are temporary compatibility exports. New code should import from `core/` or `features/`.
+The Dart package name is `near_ride`. Production code is organized under `core/` and `features/`; `app/lib/main.dart` is the only Dart file kept at the library root.
 
 ## FastAPI backend
 
@@ -55,7 +66,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-If `DATABASE_URL` is not set, the backend falls back to a local SQLite database for development. Production should use PostgreSQL.
+If `DATABASE_URL` is not set, the backend uses local SQLite for development. Production should use PostgreSQL.
 
 ## Server environment variables
 
@@ -70,50 +81,65 @@ GEMINI_MODEL=gemini-2.0-flash
 GEMINI_IMAGE_MODEL=gemini-2.0-flash-preview-image-generation
 ```
 
-Never commit `.env`, `secret.json`, API keys, database passwords, or cloud credentials.
+Never commit `.env`, `secret.json`, API keys, database passwords, cloud credentials, or runtime uploads.
 
-## GPS architecture
+## Runtime architecture
 
-The mobile app records GPS points through FastAPI. Trajectory matching is an internal backend service:
+Near Ride has two production runtimes:
+
+1. Flutter under `app/`.
+2. FastAPI under `server/`.
+
+GPS trajectory matching is an internal FastAPI service, not a third runtime. Developer tools under `tools/` are outside production runtime paths.
+
+### GPS
 
 ```text
-server/app/services/trajectory/
-├─ geohash.py
-├─ similarity.py
-└─ analyzer.py
+Flutter GPS -> FastAPI GPS routes -> SQLAlchemy -> gps_locations
+                                   -> trajectory analyzer
+                                      ├─ geohash
+                                      ├─ distance
+                                      ├─ DTW
+                                      └─ hybrid
 ```
 
-Supported matching methods are `geohash`, `distance`, `dtw`, and `hybrid`.
-
-Example endpoint:
+Similarity endpoint:
 
 ```http
 GET /gps/similar/{user_id}?method=hybrid&threshold=0.3&days=7
 ```
 
-Visualization remains developer-only under `tools/gps/` and is not a FastAPI runtime dependency.
+### AI
 
-## AI architecture
-
-Gemini credentials are server-managed. Flutter never stores the Gemini API key.
+Gemini credentials stay on the server.
 
 ```text
-Flutter -> FastAPI /ai/generate  -> Gemini text
-Flutter -> FastAPI /ai/summarize -> Gemini text
-Flutter -> FastAPI /ai/emotion   -> Gemini text
-Flutter -> FastAPI /ai/avatar    -> Gemini image generation
+Flutter -> POST /ai/generate   -> Gemini text
+Flutter -> POST /ai/summarize  -> Gemini text
+Flutter -> POST /ai/emotion    -> Gemini text
+Flutter -> POST /ai/avatar     -> Gemini image
 ```
+
+## API reference
+
+See `docs/API.md` for the current FastAPI and WebSocket surface.
 
 ## Deployment
 
-`render.yaml` deploys the `server/` directory. Database, Cloudinary, and Gemini credentials are configured as environment variables rather than committed files.
+`render.yaml` deploys `server/` using:
+
+```text
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+Database, Cloudinary, and Gemini credentials are configured as environment variables.
 
 ## Refactor branch
 
-All monorepo/refactor work is isolated in:
+All consolidation work remains isolated in:
 
 ```text
 refactor/near-ride-monorepo
 ```
 
-This branch must not be merged into `main` until explicitly approved. Flutter and backend runtime smoke tests are still required before merge; repository-level structural checks are not a substitute for running the apps.
+Do not merge this branch into `main` until explicitly approved. Flutter and backend runtime smoke tests are still required before merge; structural/static checks do not replace running the applications.
