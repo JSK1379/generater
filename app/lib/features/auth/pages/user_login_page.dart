@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'user_api_service.dart';
-import 'api_config.dart';
-import 'chat_service_singleton.dart';
+import 'package:near_ride/core/compat/user_api_service.dart';
+import 'package:near_ride/core/config/api_config.dart';
+import 'package:near_ride/features/chat/services/chat_service_singleton.dart';
 
 class UserLoginPage extends StatefulWidget {
   const UserLoginPage({super.key});
