@@ -473,7 +473,7 @@ class _BleScanBodyState extends State<BleScanBody> {
     try {
       debugPrint('[BLE] 開始獲取用戶資料: $userId');
       
-      // 使用 UserApiService 獲取用戶資料
+      // 使用 ProfileService 獲取用戶資料
       final userProfile = await _profileService.getUserProfile(userId);
       
       if (userProfile != null) {
