@@ -5,12 +5,12 @@ import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'settings_ble_helper.dart';
-import 'user_profile_edit_page.dart';
-import 'api_config.dart';
-import 'high_frequency_gps_test_page.dart';
-import 'background_gps_service.dart';
-import 'gemini_api_key_setup_page.dart';
+import 'package:near_ride/features/ble/services/ble_advertising_service.dart';
+import 'package:near_ride/features/profile/pages/user_profile_edit_page.dart';
+import 'package:near_ride/core/config/api_config.dart';
+import 'package:near_ride/features/gps/pages/high_frequency_gps_test_page.dart';
+import 'package:near_ride/features/gps/services/background_gps_service.dart';
+import 'package:near_ride/features/ai/pages/ai_settings_page.dart';
 
 class SettingsPage extends StatefulWidget {
   final bool isAdvertising;
