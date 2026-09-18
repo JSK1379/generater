@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'gps_service.dart';
+import 'package:near_ride/features/gps/services/gps_service.dart';
 
 /// GPS背景追蹤設定頁面
 class GPSBackgroundSettingsPage extends StatefulWidget {
