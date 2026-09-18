@@ -27,3 +27,11 @@ build/
 # Generated GPS analysis output
 output/
 analysis_report.txt
+
+# Runtime uploads / test artifacts
+server/uploads/
+uploads/
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
