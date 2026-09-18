@@ -1,4 +1,4 @@
-import 'package:near_ride/chat_service.dart';
+import 'package:near_ride/features/chat/services/chat_service.dart';
 
 /// Shared ChatService instance used by the whole app.
 class ChatServiceSingleton {
