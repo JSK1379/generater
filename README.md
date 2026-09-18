@@ -55,6 +55,16 @@ flutter run \
 
 The Dart package name is `near_ride`. Production code is organized under `core/` and `features/`; `app/lib/main.dart` is the only Dart file kept at the library root.
 
+## Developer TEST tab
+
+The manual Flutter/WebSocket/GPS test page lives under `lib/features/dev/` and is hidden by default. To expose it while loading the app onto a test phone:
+
+```bash
+flutter run --dart-define=ENABLE_DEV_TOOLS=true
+```
+
+Normal builds omit the TEST tab from navigation.
+
 ## FastAPI backend
 
 ```bash
