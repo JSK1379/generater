@@ -13,7 +13,7 @@ import 'package:near_ride/features/ai/services/ai_service.dart'; // 安全版本
 
 class ChatService extends ChangeNotifier {
   final WebSocketService _webSocketService = WebSocketService();
-  // 創建 UserApiService 實例，使用統一的API配置
+  // 使用聚焦的 FriendService / ProfileService 存取後端資料
   final FriendService _friendService = FriendService(ApiConfig.baseUrl);
   final ProfileService _profileService = ProfileService(ApiConfig.baseUrl);
   // 創建 GeminiService 實例，用於前端 AI 功能
@@ -606,7 +606,7 @@ class ChatService extends ChangeNotifier {
     _ensureRoomExists(roomId);
     
     try {
-      // 使用 UserApiService 獲取聊天記錄
+      // 使用 FriendService 獲取聊天記錄
       final chatHistory = await _friendService.getChatHistory(roomId);
       
       // 檢查聊天記錄是否有效
