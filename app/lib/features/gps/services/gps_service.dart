@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-import 'package:near_ride/background_gps_service.dart';
+import 'package:near_ride/features/gps/services/background_gps_service.dart';
 import 'package:near_ride/core/config/api_config.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
