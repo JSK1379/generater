@@ -8,7 +8,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:near_ride/core/config/api_config.dart';
 import 'gps_service.dart';
-import 'foreground_location_service.dart';
 import 'enhanced_foreground_location_service.dart';
 
 /// 背景GPS服務管理器
@@ -23,9 +22,6 @@ class BackgroundGPSService {
     
     // 初始化通知
     await _initializeNotifications();
-    
-    // 初始化前台定位服務
-    await ForegroundLocationService.initialize();
     
     // 初始化增強版前台定位服務
     await EnhancedForegroundLocationService.initialize();
