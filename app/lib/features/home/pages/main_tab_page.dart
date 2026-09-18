@@ -10,9 +10,15 @@ import 'package:near_ride/features/chat/pages/chat_page.dart';
 import 'package:near_ride/features/chat/pages/chat_room_list_page.dart';
 import 'package:near_ride/features/chat/services/chat_room_open_manager.dart';
 import 'package:near_ride/features/chat/services/chat_service_singleton.dart';
+import 'package:near_ride/features/dev/pages/test_tab.dart';
 import 'package:near_ride/features/ble/services/ble_advertising_service.dart';
 import 'package:near_ride/features/settings/pages/settings_page.dart';
 import 'package:near_ride/features/profile/services/profile_service.dart';
+
+const bool kEnableDevTools = bool.fromEnvironment(
+  'ENABLE_DEV_TOOLS',
+  defaultValue: false,
+);
 
 class MainTabPage extends StatefulWidget {
   const MainTabPage({super.key});
@@ -66,12 +72,27 @@ class MainTabPageState extends State<MainTabPage> {
           nicknameController: _nicknameController,
           onSaveNickname: _saveNickname,
         ),
+        if (kEnableDevTools) const TestTab(),
       ];
 
-  List<BottomNavigationBarItem> get _items => const [
-        BottomNavigationBarItem(icon: Icon(Icons.bluetooth), label: '藍牙'),
-        BottomNavigationBarItem(icon: Icon(Icons.chat), label: '聊天室'),
-        BottomNavigationBarItem(icon: Icon(Icons.settings), label: '設定'),
+  List<BottomNavigationBarItem> get _items => [
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.bluetooth),
+          label: '藍牙',
+        ),
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.chat),
+          label: '聊天室',
+        ),
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.settings),
+          label: '設定',
+        ),
+        if (kEnableDevTools)
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.science),
+            label: '測試',
+          ),
       ];
 
   @override
