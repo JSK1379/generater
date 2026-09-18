@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'chat_service.dart';
-import 'chat_models.dart';
-import 'chat_room_open_manager.dart'; // 導入全局管理器
-import 'api_config.dart';
+import 'package:near_ride/features/chat/services/chat_service.dart';
+import 'package:near_ride/features/chat/models/chat_models.dart';
+import 'package:near_ride/features/chat/services/chat_room_open_manager.dart'; // 導入全局管理器
+import 'package:near_ride/core/config/api_config.dart';
 
 class ChatPage extends StatefulWidget {
   final String roomId;
