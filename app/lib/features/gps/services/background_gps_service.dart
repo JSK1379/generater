@@ -6,7 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
-import 'api_config.dart';
+import 'package:near_ride/core/config/api_config.dart';
 import 'gps_service.dart';
 import 'foreground_location_service.dart';
 import 'enhanced_foreground_location_service.dart';
