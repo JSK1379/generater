@@ -43,6 +43,16 @@ lib/
 
 Each feature owns its pages, services, models, or utilities. `features/home/pages/main_tab_page.dart` contains the main app shell/navigation. There are no legacy compatibility export files at the `lib/` root.
 
+## Developer TEST tab
+
+The manual Flutter/WebSocket/GPS test page lives under `lib/features/dev/` and is hidden by default. To expose it while loading the app onto a test phone:
+
+```bash
+flutter run --dart-define=ENABLE_DEV_TOOLS=true
+```
+
+Normal builds omit the TEST tab from navigation.
+
 ## Networking
 
 Shared backend configuration lives in `core/config/api_config.dart`; the canonical WebSocket implementation lives in `core/network/websocket_service.dart`.
