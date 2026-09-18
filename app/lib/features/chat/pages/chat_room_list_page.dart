@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'chat_service_singleton.dart';
+import 'package:near_ride/features/chat/services/chat_service_singleton.dart';
 import 'chat_page.dart';
-import 'chat_models.dart'; // 添加引入
-import 'chat_room_open_manager.dart'; // 添加全局管理器引入
+import 'package:near_ride/features/chat/models/chat_models.dart'; // 添加引入
+import 'package:near_ride/features/chat/services/chat_room_open_manager.dart'; // 添加全局管理器引入
 
 class ChatRoomListPage extends StatefulWidget {
   const ChatRoomListPage({super.key});
