@@ -3,11 +3,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'chat_service_singleton.dart';
-import 'user_api_service.dart';
+import 'package:near_ride/features/chat/services/chat_service_singleton.dart';
+import 'package:near_ride/features/auth/services/auth_service.dart';
 import 'dart:async';
-import 'api_config.dart';
-import 'high_frequency_gps_test_page.dart';
+import 'package:near_ride/core/config/api_config.dart';
+import 'package:near_ride/features/gps/pages/high_frequency_gps_test_page.dart';
 
 // 使用統一的API配置
 final String kTestWsServerUrl = ApiConfig.wsUrl;
@@ -166,7 +166,19 @@ class _TestTabState extends State<TestTab> {
     // 🔄 優化連線邏輯：只在需要時連線，避免重複
     if (!chatService.isConnected) {
       debugPrint('[TestTab] WebSocket未連線，開始連線...');
-      await chatService.connectAndRegister(kTestWsServerUrl, 'test_room', myUserId);
+      final connected = await chatService.connectAndRegister(
+        kTestWsServerUrl,
+        'test_room',
+        myUserId,
+      );
+      if (!connected) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('WebSocket 連線失敗，未發送連接要求')),
+          );
+        }
+        return;
+      }
     } else {
       debugPrint('[TestTab] WebSocket已連線，確保用戶註冊...');
       chatService.ensureUserRegistered(myUserId);
@@ -190,7 +202,19 @@ class _TestTabState extends State<TestTab> {
     // 🔄 優化連線邏輯，避免重複連線
     if (!chatService.isConnected) {
       debugPrint('[TestTab] WebSocket未連線，開始連線建立房間...');
-      await chatService.connectAndRegister(kTestWsServerUrl, 'test_room', myUserId);
+      final connected = await chatService.connectAndRegister(
+        kTestWsServerUrl,
+        'test_room',
+        myUserId,
+      );
+      if (!connected) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('WebSocket 連線失敗，無法建立聊天室')),
+          );
+        }
+        return;
+      }
     } else {
       debugPrint('[TestTab] WebSocket已連線，確保用戶註冊後建立房間...');
       // 確保用戶已註冊
@@ -211,11 +235,13 @@ class _TestTabState extends State<TestTab> {
         debugPrint('[TestTab] 房間 $roomId 已存在於聊天室列表中，跳過 joinRoom');
         joinMsg = '\n房間 $roomId 已存在，無需再次加入';
       } else {
-        // 先發送 joinRoom 請求
-        chatService.joinRoom(roomId).then((success) {
-          debugPrint('[TestTab] joinRoom 完成: $success');
-        });
-        joinMsg = '\n已自動發送 join_room: {"type": "join_room", "roomId": "$roomId"}';
+        final joined = await chatService.joinRoom(roomId);
+        debugPrint('[TestTab] joinRoom 完成: $joined');
+        if (!joined) {
+          joinMsg = '\n加入房間失敗';
+        } else {
+          joinMsg = '\n已加入房間 $roomId';
+        }
       }
       debugPrint('已請求建立聊天室: $roomName (roomId: $roomId)$joinMsg');
     } else {
@@ -240,8 +266,8 @@ class _TestTabState extends State<TestTab> {
 
     try {
       // 通過 HTTP 註冊並獲取新的用戶 ID
-      final userApiService = UserApiService(ApiConfig.baseUrl);
-      final newUserId = await userApiService.registerUserWithEmail(email, password);
+      final authService = AuthService(ApiConfig.baseUrl);
+      final newUserId = await authService.register(email, password);
       
       if (newUserId == null) {
         if (!context.mounted) return;
@@ -266,8 +292,16 @@ class _TestTabState extends State<TestTab> {
 
       // 通過 WebSocket 註冊用戶（使用現有的 ChatService 實例）
       try {
-        await chatService.connectAndRegister(kTestWsServerUrl, '', newUserId);
-        debugPrint('[TestTab] WebSocket 用戶註冊成功: $newUserId');
+        final connected = await chatService.connectAndRegister(
+          kTestWsServerUrl,
+          '',
+          newUserId,
+        );
+        if (!connected) {
+          debugPrint('[TestTab] WebSocket 用戶註冊失敗: $newUserId');
+        } else {
+          debugPrint('[TestTab] WebSocket 用戶註冊成功: $newUserId');
+        }
       } catch (e) {
         debugPrint('[TestTab] WebSocket 用戶註冊失敗: $e');
         // WebSocket 註冊失敗不阻止繼續操作
