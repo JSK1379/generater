@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:near_ride/core/compat/user_api_service.dart';
+import 'package:near_ride/features/auth/services/auth_service.dart';
 import 'package:near_ride/core/config/api_config.dart';
 import 'package:near_ride/features/chat/services/chat_service_singleton.dart';
 
@@ -16,12 +16,12 @@ class _UserLoginPageState extends State<UserLoginPage> {
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _obscurePassword = true;
-  late UserApiService _userApiService;
+  late AuthService _authService;
 
   @override
   void initState() {
     super.initState();
-    _userApiService = UserApiService(ApiConfig.baseUrl);
+    _authService = AuthService(ApiConfig.baseUrl);
     // 立即清除焦點，防止自動彈出鍵盤
     Future.microtask(() {
       if (mounted) {
@@ -54,7 +54,7 @@ class _UserLoginPageState extends State<UserLoginPage> {
 
     try {
       // 調用登入 API
-      final userId = await _userApiService.loginUser(email, password);
+      final userId = await _authService.login(email, password);
       
       if (userId == null) {
         if (mounted) {
