@@ -1,4 +1,4 @@
-import '../../../background_gps_service.dart';
+import 'package:near_ride/features/gps/services/background_gps_service.dart';
 
 /// Single application-facing entry point for background GPS tracking.
 ///
