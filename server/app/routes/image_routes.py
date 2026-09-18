@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 from io import BytesIO
 from pathlib import Path
@@ -62,7 +63,7 @@ async def upload_image(file: UploadFile = File(...)):
 
 @router.get('/{image_id}')
 def get_image(image_id: str):
-    if not image_id.isalnum():
+    if re.fullmatch(r'[A-Za-z0-9_-]+', image_id) is None:
         raise HTTPException(status_code=400, detail='無效圖片 ID')
 
     if _cloudinary_enabled():
