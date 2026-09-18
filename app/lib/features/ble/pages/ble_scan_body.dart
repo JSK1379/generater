@@ -3,10 +3,10 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
 import 'dart:async';
-import 'chat_service_singleton.dart';
+import 'package:near_ride/features/chat/services/chat_service_singleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'api_config.dart';
-import 'user_api_service.dart';
+import 'package:near_ride/core/config/api_config.dart';
+import 'package:near_ride/core/compat/user_api_service.dart';
 
 class BleScanBody extends StatefulWidget {
   const BleScanBody({super.key});
