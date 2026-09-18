@@ -12,7 +12,7 @@ import 'package:near_ride/features/chat/services/chat_room_open_manager.dart';
 import 'package:near_ride/features/chat/services/chat_service_singleton.dart';
 import 'package:near_ride/features/ble/services/ble_advertising_service.dart';
 import 'package:near_ride/features/settings/pages/settings_page.dart';
-import 'package:near_ride/core/compat/user_api_service.dart';
+import 'package:near_ride/features/profile/services/profile_service.dart';
 
 class MainTabPage extends StatefulWidget {
   const MainTabPage({super.key});
@@ -26,12 +26,12 @@ class MainTabPageState extends State<MainTabPage> {
   bool _isAdvertising = false;
   final TextEditingController _nicknameController = TextEditingController();
   final ChatRoomOpenManager _openManager = ChatRoomOpenManager();
-  late final UserApiService _userApiService;
+  late final ProfileService _profileService;
 
   @override
   void initState() {
     super.initState();
-    _userApiService = UserApiService(ApiConfig.baseUrl);
+    _profileService = ProfileService(ApiConfig.baseUrl);
     _loadNickname();
     ChatServiceSingleton.instance.addConnectRequestListener(_handleConnectRequest);
     ChatServiceSingleton.instance.webSocketService.addMessageListener(_onWsMessage);
@@ -101,7 +101,7 @@ class MainTabPageState extends State<MainTabPage> {
 
   Future<Map<String, dynamic>?> _fetchUserProfile(String userId) async {
     try {
-      return await _userApiService.getUserProfile(userId);
+      return await _profileService.getUserProfile(userId);
     } catch (error) {
       debugPrint('[MainTabPage] fetch profile failed: $error');
       return null;
