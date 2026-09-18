@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'api_config.dart';
+import 'package:near_ride/core/config/api_config.dart';
 
 /// 增強版前台定位服務管理器
 /// 提供真正的背景GPS追蹤能力，即使關閉APP也能繼續運行
