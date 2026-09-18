@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:near_ride/features/chat/services/chat_service_singleton.dart';
-import 'package:near_ride/core/compat/user_api_service.dart';
+import 'package:near_ride/features/auth/services/auth_service.dart';
 import 'package:near_ride/core/config/api_config.dart';
 import 'user_login_page.dart';
 
@@ -55,8 +55,8 @@ class _UserIdSetupPageState extends State<UserIdSetupPage> {
 
     try {
       // 通過 HTTP 註冊並獲取用戶 ID
-      final userApiService = UserApiService(ApiConfig.baseUrl);
-      final userId = await userApiService.registerUserWithEmail(email, password);
+      final authService = AuthService(ApiConfig.baseUrl);
+      final userId = await authService.register(email, password);
       
       if (userId == null) {
         if (mounted) {
