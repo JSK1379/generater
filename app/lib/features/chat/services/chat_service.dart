@@ -5,7 +5,8 @@ import 'package:near_ride/core/network/websocket_service.dart';
 import 'package:near_ride/features/chat/models/chat_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'package:near_ride/core/compat/user_api_service.dart';
+import 'package:near_ride/features/friends/services/friend_service.dart';
+import 'package:near_ride/features/profile/services/profile_service.dart';
 // import 'image_api_service.dart'; // 臨時註釋：圖片上傳功能暫時禁用
 import 'package:near_ride/core/config/api_config.dart';
 import 'package:near_ride/features/ai/services/ai_service.dart'; // 安全版本的 Gemini Service
@@ -13,7 +14,8 @@ import 'package:near_ride/features/ai/services/ai_service.dart'; // 安全版本
 class ChatService extends ChangeNotifier {
   final WebSocketService _webSocketService = WebSocketService();
   // 創建 UserApiService 實例，使用統一的API配置
-  final UserApiService _userApiService = UserApiService(ApiConfig.baseUrl);
+  final FriendService _friendService = FriendService(ApiConfig.baseUrl);
+  final ProfileService _profileService = ProfileService(ApiConfig.baseUrl);
   // 創建 GeminiService 實例，用於前端 AI 功能
   final SecureGeminiService _geminiService = SecureGeminiService();
   // 創建 ImageApiService 實例，用於圖片上傳
@@ -605,7 +607,7 @@ class ChatService extends ChangeNotifier {
     
     try {
       // 使用 UserApiService 獲取聊天記錄
-      final chatHistory = await _userApiService.getChatHistory(roomId);
+      final chatHistory = await _friendService.getChatHistory(roomId);
       
       // 檢查聊天記錄是否有效
       if (chatHistory != null && chatHistory.isNotEmpty) {
@@ -855,7 +857,7 @@ class ChatService extends ChangeNotifier {
     if (userIds.isNotEmpty) {
       try {
         final userProfiles = await Future.wait([
-          for (final userId in userIds) _userApiService.getUserProfile(userId)
+          for (final userId in userIds) _profileService.getUserProfile(userId)
         ]);
         
         final userContextList = <String>[];
@@ -1022,8 +1024,8 @@ class ChatService extends ChangeNotifier {
         
         try {
           final futures = await Future.wait([
-            _userApiService.getUserProfile(currentUser),
-            otherUserId.isNotEmpty ? _userApiService.getUserProfile(otherUserId) : Future.value(null),
+            _profileService.getUserProfile(currentUser),
+            otherUserId.isNotEmpty ? _profileService.getUserProfile(otherUserId) : Future.value(null),
           ]);
           currentUserProfile = futures[0];
           otherUserProfile = futures[1];
@@ -1063,8 +1065,8 @@ ${_buildUserInfoForPrompt(otherUserProfile, '對方用戶 ($otherUserId)')}
       
       try {
         final futures = await Future.wait([
-          _userApiService.getUserProfile(currentUser),
-          otherUserId.isNotEmpty ? _userApiService.getUserProfile(otherUserId) : Future.value(null),
+          _profileService.getUserProfile(currentUser),
+          otherUserId.isNotEmpty ? _profileService.getUserProfile(otherUserId) : Future.value(null),
         ]);
         currentUserProfile = futures[0];
         otherUserProfile = futures[1];
