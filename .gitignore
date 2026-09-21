@@ -29,9 +29,12 @@ output/
 analysis_report.txt
 
 # Runtime uploads / test artifacts
-server/uploads/
-uploads/
+**/server/uploads/
+**/uploads/
 .pytest_cache/
 .coverage
 coverage/
 htmlcov/
+
+# Unrelated local workspace folders
+info web/
