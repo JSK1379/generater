@@ -43,7 +43,7 @@ class BleScanHelper {
     }
 
     final nicknameLength = data[4];
-    final nicknameStart = 5;
+    const nicknameStart = 5;
     final nicknameEnd = nicknameStart + nicknameLength;
     if (nicknameEnd >= data.length) return null;
 
