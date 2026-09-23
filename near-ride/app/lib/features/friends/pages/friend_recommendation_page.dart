@@ -120,7 +120,7 @@ class _FriendRecommendationPageState extends State<FriendRecommendationPage> {
     }
     chat.sendConnectRequest(userId, person.userId);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已送出連接請求，等待對方回應。')),
+      const SnackBar(content: Text('已嘗試發送邀請；對方離線時可能不會收到。')),
     );
   }
 
