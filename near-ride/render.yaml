@@ -1,20 +1,41 @@
+# New, isolated TEST deployment for the consolidated Near Ride monorepo.
+# Render Dashboard -> New -> Blueprint
+# Repository: JSK1379/generater
+# Branch: refactor/near-ride-monorepo
+# Blueprint Path: near-ride/render.yaml
+#
+# Free PostgreSQL expires after 30 days. Use test data only.
+# Do not point this service at the original/production database.
 services:
   - type: web
-    name: near-ride-backend-api
+    name: near-ride-refactor-api
     runtime: python
+    plan: free
+    region: singapore
+    repo: https://github.com/JSK1379/generater
+    branch: refactor/near-ride-monorepo
     rootDir: near-ride/server
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeployTrigger: off
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: near-ride-refactor-db
+          property: connectionString
       - key: USE_CLOUD_STORAGE
         value: "false"
-      - key: CLOUDINARY_URL
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
       - key: GEMINI_MODEL
         value: gemini-2.0-flash
+      - key: GEMINI_IMAGE_MODEL
+        value: gemini-2.0-flash-preview-image-generation
+      # Add GEMINI_API_KEY and CLOUDINARY_URL in Render Dashboard if needed;
+      # never commit secrets. Free web-service uploads are not persistent.
+
+databases:
+  - name: near-ride-refactor-db
+    plan: free
+    region: singapore
