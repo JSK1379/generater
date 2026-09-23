@@ -10,3 +10,4 @@ cloudinary
 python-dotenv
 numpy
 pandas
+geohash2
