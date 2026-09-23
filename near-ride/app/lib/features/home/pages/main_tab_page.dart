@@ -11,6 +11,7 @@ import 'package:near_ride/features/chat/pages/chat_room_list_page.dart';
 import 'package:near_ride/features/chat/services/chat_room_open_manager.dart';
 import 'package:near_ride/features/chat/services/chat_service_singleton.dart';
 import 'package:near_ride/features/dev/pages/test_tab.dart';
+import 'package:near_ride/features/friends/pages/friend_recommendation_page.dart';
 import 'package:near_ride/features/ble/services/ble_advertising_service.dart';
 import 'package:near_ride/features/settings/pages/settings_page.dart';
 import 'package:near_ride/features/profile/services/profile_service.dart';
@@ -66,6 +67,7 @@ class MainTabPageState extends State<MainTabPage> {
   List<Widget> get _pages => [
         const BleScanBody(),
         const ChatRoomListPage(),
+        const FriendRecommendationPage(),
         SettingsPage(
           isAdvertising: _isAdvertising,
           onToggleAdvertise: _toggleAdvertise,
@@ -83,6 +85,10 @@ class MainTabPageState extends State<MainTabPage> {
         const BottomNavigationBarItem(
           icon: Icon(Icons.chat),
           label: '聊天室',
+        ),
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.people_alt_outlined),
+          label: '推薦',
         ),
         const BottomNavigationBarItem(
           icon: Icon(Icons.settings),
