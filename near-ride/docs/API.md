@@ -36,6 +36,25 @@ Mounted under `/friends`.
 | DELETE | `/friends/remove_friend` | Remove friend |
 | GET | `/friends/chat_history/{room_id}` | Get room history |
 
+## Friend recommendations
+
+Mounted under `/friends`. Users are excluded from recommendation results unless
+they have explicitly enabled participation. Only one matched profile is returned
+per request; neither coordinates nor full GPS routes are returned.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/friends/recommendation-settings/{user_id}` | Read opt-in preference |
+| PUT | `/friends/recommendation-settings/{user_id}` | Set `{"enabled": true/false}` |
+| GET | `/friends/recommendation/{user_id}` | Return one matched profile or a reason for no match |
+
+The recommendation GET accepts repeated `exclude_user_ids` query parameters so
+the client can skip already viewed candidates. It excludes the current user and
+existing friends, requires at least eight recent points from each party, and
+compares tracks from the last 14 days. These are *general GPS tracks*: the
+current database does not yet tag commute sessions. See
+`docs/FRIEND_RECOMMENDATIONS.md` for testing and privacy limitations.
+
 A second compatibility history endpoint remains available:
 
 | Method | Path | Purpose |
