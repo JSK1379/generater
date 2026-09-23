@@ -32,6 +32,10 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
   
   String _selectedGender = 'male';
   List<int> _selectedHobbyIds = [];
+  static const List<String> _commuteModeOptions = <String>[
+    '汽車', '機車', '公車', '捷運', '火車',
+  ];
+  List<String> _selectedCommuteModes = <String>[];
   List<Map<String, dynamic>> _availableHobbies = [];
   bool _isLoading = false;
   bool _isLoadingProfile = true;
@@ -126,6 +130,12 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
           _selectedGender = data['gender'] ?? 'male';
           _ageController.text = data['age']?.toString() ?? '';
           _locationController.text = data['location'] ?? '';
+          final rawModes = data['commute_modes'];
+          _selectedCommuteModes = rawModes is List
+              ? rawModes.whereType<String>()
+                  .where(_commuteModeOptions.contains)
+                  .toSet().toList()
+              : <String>[];
           
           // 處理頭貼
           if (data['avatar_url'] != null && data['avatar_url'].toString().isNotEmpty) {
@@ -359,6 +369,7 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
         'nickname': _nicknameController.text.trim(),
         'gender': _selectedGender,
         'hobby_ids': _selectedHobbyIds,
+        'commute_modes': _selectedCommuteModes,
       };
       
       // 如果選擇了「其他」興趣，包含自定義描述
@@ -950,6 +961,37 @@ class _UserProfileEditPageState extends State<UserProfileEditPage> {
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.location_on),
                   ),
+                ),
+                const SizedBox(height: 24),
+
+                // 通勤方式：與興趣相同，可複選
+                const Text('通勤方式', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                const Text('可複選平常使用的交通工具，作為推薦好友的參考。',
+                    style: TextStyle(color: Colors.grey)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8.0,
+                  runSpacing: 8.0,
+                  children: _commuteModeOptions.map((mode) {
+                    final isSelected = _selectedCommuteModes.contains(mode);
+                    return FilterChip(
+                      label: Text(mode),
+                      selected: isSelected,
+                      onSelected: (selected) {
+                        setState(() {
+                          if (selected) {
+                            _selectedCommuteModes.add(mode);
+                          } else {
+                            _selectedCommuteModes.remove(mode);
+                          }
+                        });
+                      },
+                      backgroundColor: Colors.grey[200],
+                      selectedColor: Colors.blue[100],
+                      checkmarkColor: Colors.blue[800],
+                    );
+                  }).toList(),
                 ),
                 const SizedBox(height: 24),
 

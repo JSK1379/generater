@@ -3,18 +3,19 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.hobby import Hobby
-from app.models.user import User
+from app.models.user import User, UserCommuteMode
 from app.models.user_status import UserStatus
 from app.services.avatar_service import cloud_avatar_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+COMMUTE_MODE_OPTIONS = ('汽車', '機車', '公車', '捷運', '火車')
 
 
 class UserCreate(BaseModel):
@@ -38,6 +39,16 @@ class UserUpdate(BaseModel):
     location: Optional[str] = None
     hobby_ids: Optional[List[int]] = None
     custom_hobby_description: Optional[str] = None
+    commute_modes: Optional[List[str]] = None
+
+    @field_validator('commute_modes')
+    @classmethod
+    def validate_commute_modes(cls, values: Optional[List[str]]) -> Optional[List[str]]:
+        if values is None:
+            return None
+        if any(value not in COMMUTE_MODE_OPTIONS for value in values):
+            raise ValueError('通勤方式只能選擇汽車、機車、公車、捷運、火車')
+        return list(dict.fromkeys(values))
 
 
 class AvatarUpload(BaseModel):
@@ -53,6 +64,7 @@ def _serialize_user(user: User) -> dict:
         'gender': user.gender,
         'age': user.age,
         'location': user.location,
+        'commute_modes': [mode for mode in COMMUTE_MODE_OPTIONS if mode in {row.mode for row in user.commute_modes}],
         'custom_hobby_description': user.custom_hobby_description,
         'hobbies': [
             {
@@ -160,6 +172,16 @@ def update_user(
 
     if payload.hobby_ids is not None:
         user.hobbies = db.query(Hobby).filter(Hobby.id.in_(payload.hobby_ids)).all()
+
+    if payload.commute_modes is not None:
+        selected = set(payload.commute_modes)
+        existing = {row.mode: row for row in user.commute_modes}
+        for row in tuple(user.commute_modes):
+            if row.mode not in selected:
+                user.commute_modes.remove(row)
+        for mode in payload.commute_modes:
+            if mode not in existing:
+                user.commute_modes.append(UserCommuteMode(mode=mode))
 
     try:
         db.commit()

@@ -38,6 +38,17 @@ class User(Base):
         primaryjoin=id == user_friends.c.user_id,
         secondaryjoin=id == user_friends.c.friend_id,
     )
+    commute_modes = relationship('UserCommuteMode', back_populates='user', cascade='all, delete-orphan')
     commute_routes = relationship('CommuteRoute', back_populates='user')
     status = relationship('UserStatus', back_populates='user')
     gps_locations = relationship('GPSLocation', back_populates='user')
+
+
+class UserCommuteMode(Base):
+    """A new table keeps existing PostgreSQL users rows untouched."""
+
+    __tablename__ = 'user_commute_modes'
+
+    user_id = Column(Integer, ForeignKey('users.id'), primary_key=True)
+    mode = Column(String(16), primary_key=True)
+    user = relationship('User', back_populates='commute_modes')

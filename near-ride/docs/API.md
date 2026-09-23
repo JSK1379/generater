@@ -25,6 +25,12 @@ Mounted under `/users`.
 | POST | `/users/{user_id}/avatar` | Upload avatar from base64 |
 | DELETE | `/users/{user_id}/avatar` | Remove avatar |
 
+Profile GET and login responses include `commute_modes`, a list of 汽車、機車、
+公車、捷運、火車. Profile PATCH/PUT accepts
+`{"commute_modes":["捷運","公車"]}`; `[]` clears all and omission leaves
+current selections unchanged. Selected modes use a new
+`user_commute_modes` table created on backend startup.
+
 ## Friends and chat history
 
 Mounted under `/friends`.
@@ -51,7 +57,10 @@ per request; neither coordinates nor full GPS routes are returned.
 The recommendation GET accepts repeated `exclude_user_ids` query parameters so
 the client can skip already viewed candidates. It excludes the current user and
 existing friends, requires at least eight recent points from each party, and
-compares tracks from the last 14 days. These are *general GPS tracks*: the
+compares tracks from the last 14 days. Shared commute mode + GPS route/time
+of day similarity takes first priority. The response includes
+`commute_modes` and `shared_commute_modes` without disclosing exact
+coordinates or times. These are *general GPS tracks*: the
 current database does not yet tag commute sessions. See
 `docs/FRIEND_RECOMMENDATIONS.md` for testing and privacy limitations.
 

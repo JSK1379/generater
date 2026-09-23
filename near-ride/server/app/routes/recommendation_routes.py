@@ -16,6 +16,7 @@ from app.models.gps_route import GPSLocation
 from app.models.recommendation_preference import RecommendationPreference
 from app.models.user import User
 from app.services.trajectory import TrajectoryAnalyzer
+from app.services.trajectory.commute_matcher import recommendation_priority, same_route_and_time
 
 router = APIRouter()
 WINDOW_DAYS = 14
@@ -106,19 +107,38 @@ def get_recommendation(
     )
 
     analyzer = TrajectoryAnalyzer(method='hybrid', threshold=MIN_SIMILARITY)
+    requested_modes = {row.mode for row in user.commute_modes}
     best_user: User | None = None
-    best_score = MIN_SIMILARITY
+    best_rank: tuple[int, float] | None = None
+    best_shared_modes: set[str] = set()
+    best_time_overlap = False
 
     for candidate in candidates:
         trajectory = _recent_trajectory(db, candidate.id, cutoff)
         if len(trajectory) < MIN_POINTS:
             continue
         score = analyzer.compare(target, trajectory)
-        if score >= best_score:
-            best_user, best_score = candidate, score
+        if score < MIN_SIMILARITY:
+            continue
+        shared_modes = requested_modes.intersection(row.mode for row in candidate.commute_modes)
+        time_overlap = same_route_and_time(target, trajectory)
+        rank = (recommendation_priority(bool(shared_modes), time_overlap), score)
+        if best_rank is None or rank > best_rank:
+            best_user, best_rank = candidate, rank
+            best_shared_modes = shared_modes
+            best_time_overlap = time_overlap
 
     if best_user is None:
         return {'recommendation': None, 'reason': 'no_match'}
+
+    if best_shared_modes and best_time_overlap:
+        match_reason = '通勤方式相同，近期 GPS 路線與每日時間帶相近'
+    elif best_shared_modes:
+        match_reason = '通勤方式相同，近期 GPS 路線相近'
+    elif best_time_overlap:
+        match_reason = '近期 GPS 路線與每日時間帶相近'
+    else:
+        match_reason = '近期 GPS 路線相近'
 
     return {
         'recommendation': {
@@ -131,7 +151,9 @@ def get_recommendation(
                 {'id': hobby.id, 'name': hobby.name}
                 for hobby in best_user.hobbies
             ],
-            'match_reason': '近兩週 GPS 路線相近（目前尚未區分通勤與一般移動）',
+            'commute_modes': [row.mode for row in best_user.commute_modes],
+            'shared_commute_modes': sorted(best_shared_modes),
+            'match_reason': match_reason,
         },
         'reason': None,
     }

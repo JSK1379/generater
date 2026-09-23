@@ -145,7 +145,7 @@ class _FriendRecommendationPageState extends State<FriendRecommendationPage> {
       children: [
         Text('推薦好友', style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 8),
-        const Text('一次推薦一位近期 GPS 路線相近的使用者，不會顯示對方的精確位置或完整路線。'),
+        const Text('優先推薦通勤方式相同，且近期 GPS 路線與每日時間帶相近的使用者。定位紀錄尚未區分通勤與一般移動。'),
         const SizedBox(height: 12),
         SwitchListTile.adaptive(
           contentPadding: EdgeInsets.zero,
@@ -184,6 +184,12 @@ class _FriendRecommendationPageState extends State<FriendRecommendationPage> {
                   Text(person.nickname, style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 8),
                   Text('年齡：${person.age?.toString() ?? '未提供'}　性別：${_genderLabel(person.gender)}'),
+                  const SizedBox(height: 8),
+                  Text('通勤方式：${person.commuteModes.isEmpty ? '未提供' : person.commuteModes.join('、')}'),
+                  if (person.sharedCommuteModes.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text('共同通勤方式：${person.sharedCommuteModes.join('、')}'),
+                  ],
                   const SizedBox(height: 12),
                   Text(person.matchReason, textAlign: TextAlign.center),
                   if (person.hobbies.isNotEmpty) ...[

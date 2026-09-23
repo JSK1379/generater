@@ -12,6 +12,8 @@ class RecommendedFriend {
     this.age,
     this.gender,
     this.hobbies = const [],
+    this.commuteModes = const [],
+    this.sharedCommuteModes = const [],
   });
 
   final String userId;
@@ -21,6 +23,8 @@ class RecommendedFriend {
   final int? age;
   final String? gender;
   final List<String> hobbies;
+  final List<String> commuteModes;
+  final List<String> sharedCommuteModes;
 
   factory RecommendedFriend.fromJson(Map<String, dynamic> data) {
     final rawHobbies = data['hobbies'] as List<dynamic>? ?? const [];
@@ -31,6 +35,10 @@ class RecommendedFriend {
       avatarUrl: data['avatar_url']?.toString(),
       age: (data['age'] as num?)?.toInt(),
       gender: data['gender']?.toString(),
+      commuteModes: (data['commute_modes'] as List<dynamic>? ?? const [])
+          .whereType<String>().toList(growable: false),
+      sharedCommuteModes: (data['shared_commute_modes'] as List<dynamic>? ?? const [])
+          .whereType<String>().toList(growable: false),
       hobbies: rawHobbies
           .whereType<Map<String, dynamic>>()
           .map((hobby) => hobby['name']?.toString() ?? '')
