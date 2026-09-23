@@ -27,6 +27,7 @@ class _FriendRecommendationPageState extends State<FriendRecommendationPage> {
   }
 
   Future<void> _initialize() async {
+    if (mounted) setState(() { _busy = true; _error = null; _status = null; });
     try {
       final prefs = await SharedPreferences.getInstance();
       final userId = prefs.getString('user_id');
@@ -95,7 +96,7 @@ class _FriendRecommendationPageState extends State<FriendRecommendationPage> {
           _status = switch (result.reason) {
             'insufficient_gps' => '近兩週定位記錄不足，累積更多路線後再試試。',
             'disabled' => '請先開啟好友推薦。',
-            _ => '目前沒有其他符合條件的推薦對象。',
+            _ => '目前沒有其他已開啟推薦、且路線相近的對象。',
           };
         }
       });
