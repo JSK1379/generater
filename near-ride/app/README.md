@@ -43,6 +43,17 @@ lib/
 
 Each feature owns its pages, services, models, or utilities. `features/home/pages/main_tab_page.dart` contains the main app shell/navigation. There are no legacy compatibility export files at the `lib/` root.
 
+## Default backend
+
+The app's default REST and WebSocket endpoints target the new Render test service:
+
+```text
+https://near-ride-refactor-api.onrender.com
+wss://near-ride-refactor-api.onrender.com/ws
+```
+
+Confirm the public URL shown in the Render service dashboard before installing the app. Build-time `API_URL` and `WS_URL` overrides take precedence over these defaults. The newly deployed backend must be used for the GPS friend recommendation routes.
+
 ## Developer TEST tab
 
 The manual Flutter/WebSocket/GPS test page lives under `lib/features/dev/` and is hidden by default. To expose it while loading the app onto a test phone:
