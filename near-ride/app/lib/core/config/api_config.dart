@@ -12,12 +12,12 @@ class ApiConfig {
 
   static const String _baseUrl = String.fromEnvironment(
     'API_URL',
-    defaultValue: 'https://near-ride-backend-api.onrender.com',
+    defaultValue: 'https://near-ride-refactor-api.onrender.com',
   );
 
   static const String _wsBaseUrl = String.fromEnvironment(
     'WS_URL',
-    defaultValue: 'wss://near-ride-backend-api.onrender.com',
+    defaultValue: 'wss://near-ride-refactor-api.onrender.com',
   );
 
   static String get baseUrl => _baseUrl;
