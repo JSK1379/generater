@@ -30,7 +30,7 @@ def get_db():
 
 def create_tables() -> None:
     # Import all models before create_all so relationships can be resolved.
-    from app.models import chat, commute_route, gps_route, hobby, room, user, user_status  # noqa: F401
+    from app.models import chat, commute_route, gps_route, hobby, recommendation_preference, room, user, user_status  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     logger.info('Database tables are ready')
