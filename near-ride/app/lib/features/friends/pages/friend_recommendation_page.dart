@@ -177,7 +177,7 @@ class _FriendRecommendationPageState extends State<FriendRecommendationPage> {
                 children: [
                   CircleAvatar(
                     radius: 46,
-                    backgroundImage: validAvatar ? NetworkImage(avatar!) : null,
+                    backgroundImage: validAvatar ? NetworkImage(avatar) : null,
                     child: validAvatar ? null : const Icon(Icons.person, size: 48),
                   ),
                   const SizedBox(height: 16),
