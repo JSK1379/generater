@@ -12,6 +12,7 @@ from app.routes import (
     gps_routes,
     hobby_routes,
     image_routes,
+    recommendation_routes,
     user_routes,
 )
 
@@ -48,6 +49,7 @@ app.add_middleware(
 app.include_router(user_routes.router, prefix='/users')
 app.include_router(chat_routes.router)
 app.include_router(friend_routes.router, prefix='/friends')
+app.include_router(recommendation_routes.router, prefix='/friends')
 app.include_router(hobby_routes.router)
 app.include_router(gps_routes.router)
 app.include_router(ai_routes.router)
